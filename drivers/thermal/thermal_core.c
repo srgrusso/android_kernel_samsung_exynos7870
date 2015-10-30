@@ -37,6 +37,7 @@
 #include <linux/of.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
+#include <linux/suspend.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/thermal.h>
@@ -58,6 +59,8 @@ static LIST_HEAD(thermal_governor_list);
 
 static DEFINE_MUTEX(thermal_list_lock);
 static DEFINE_MUTEX(thermal_governor_lock);
+
+static atomic_t in_suspend;
 
 #ifdef CONFIG_SCHED_MC
 #define BOUNDED_CPU		1
@@ -507,6 +510,9 @@ static void thermal_zone_device_reset(struct thermal_zone_device *tz)
 void thermal_zone_device_update(struct thermal_zone_device *tz)
 {
 	int count;
+
+	if (atomic_read(&in_suspend))
+		return;
 
 	if (!tz->ops->get_temp)
 		return;
