@@ -93,8 +93,3 @@ usr/initramfs_data.cpio.gz
 vmlinux
 !.gitignore
 
-#Temporarily Untracked
-b
-oxygen/
-
-

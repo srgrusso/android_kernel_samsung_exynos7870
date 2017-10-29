@@ -1,0 +1,14 @@
+-Merged with the latest 3.18.78 upsream kernel!!!
+-Disable CRCs (30% Performance boost!!)
+-Allow toggle CRCs through OKM
+-Enabled support for ARCH_POWER
+-Some ramdisk tweaks
+-Updated toolchain
+-Update Blu_active Governor
+-Enabled "Optimise for performance instead of size"
+-Updated Spectrum Profiles
+-Speed up reading /proc/vmstat by 30%
+-Deadline IO scheduler optimisations
+-Reduce time to sleep
+-Disabled Logging
+-LZ4 Optimisations
