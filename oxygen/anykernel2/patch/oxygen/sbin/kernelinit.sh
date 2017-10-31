@@ -76,7 +76,7 @@ done
 # 0 = Permissive, 1 = Enforcing
 $BB chmod 777 /sys/fs/selinux/enforce
 echo "0" > /sys/fs/selinux/enforce
-$BB chmod 640 /sys/fs/selinux/enforce
+$BB chmod 644 /sys/fs/selinux/enforce
 
 # Stock Settings
 echo interactive > /sys/devices/system/cpu/cpu4/cpufreq/scaling_governor
