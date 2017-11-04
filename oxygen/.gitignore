@@ -1,6 +1,6 @@
 *.log
 Oxygen.*.*.*.zip
-ramdisk/ramdisk-new.cpio.gz
-zip/boot.img
-zip/oxygenkernel/anykernel2/anykernel2.zip
+*/ramdisk-new.cpio.gz
+*/boot.img
+*/anykernel2.zip
 
