@@ -13,10 +13,10 @@
 # --------
 ini_set("force_colorspace","rgba");
 ini_set("rom_name", "Oxygen Kernel");
-ini_set("rom_version", "2.0");
+ini_set("rom_version", "2.1");
 ini_set("rom_author", "Siddhant Naik");
 ini_set("rom_device", "SM-G610x");
-ini_set("rom_date", "Oct 29th, 2017");
+ini_set("rom_date", "Nov 4th, 2017");
 
 
 # SETUP
