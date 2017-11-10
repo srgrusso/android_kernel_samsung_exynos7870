@@ -34,13 +34,13 @@
    chmod 644 /sys/devices/system/cpu/cpu4/cpufreq/scaling_max_freq
    echo 1586000 > /sys/devices/system/cpu/cpu4/cpufreq/scaling_max_freq
    chmod 644 /sys/devices/system/cpu/cpu4/cpufreq/interactive/go_hispeed_load
-   echo 89 > /sys/devices/system/cpu/cpu4/cpufreq/interactive/go_hispeed_load
+   echo 85 > /sys/devices/system/cpu/cpu4/cpufreq/interactive/go_hispeed_load
    chmod 644 /sys/devices/system/cpu/cpu4/cpufreq/interactive/above_hispeed_delay
-   echo "59000 1248000:79000 1664000:19000" > /sys/devices/system/cpu/cpu4/cpufreq/interactive/above_hispeed_delay
+   echo "9000 1274000:39000" > /sys/devices/system/cpu/cpu4/cpufreq/interactive/above_hispeed_delay
    chmod 644 /sys/devices/system/cpu/cpu4/cpufreq/interactive/timer_rate
    echo 20000 > /sys/devices/system/cpu/cpu4/cpufreq/interactive/timer_rate
    chmod 644 /sys/devices/system/cpu/cpu4/cpufreq/interactive/hispeed_freq
-   echo 1248000 > /sys/devices/system/cpu/cpu4/cpufreq/interactive/hispeed_freq
+   echo 858000 > /sys/devices/system/cpu/cpu4/cpufreq/interactive/hispeed_freq
    chmod 644 /sys/devices/system/cpu/cpu4/cpufreq/interactive/timer_slack
    echo 20000 > /sys/devices/system/cpu/cpu4/cpufreq/interactive/timer_slack
    chmod 644 /sys/devices/system/cpu/cpu4/cpufreq/interactive/target_loads
@@ -56,23 +56,27 @@
    chmod 644 /sys/devices/system/cpu/cpu4/cpufreq/interactive/boostpulse_duration
    echo 0 > /sys/devices/system/cpu/cpu4/cpufreq/interactive/boostpulse_duration
    
-   #Hotplug Samsung
+   #Samsung Hotplug
    chmod 644 /sys/power/cpuhotplug/enable
-   echo 1 > /sys/power/cpuhotplug/enable
+   echo 0 > /sys/power/cpuhotplug/enable
   
+	#ThunderPlug Hotplug
+   chmod 644 /sys/kernel/thunderplug/hotplug_enabled
+   echo 1 > /sys/kernel/thunderplug/hotplug_enabled
+
    #Gpu Tweaks
    chmod 644 /sys/devices/11400000.mali/max_clock
    echo 1001 > /sys/devices/11400000.mali/max_clock
    chmod 644 /sys/devices/11400000.mali/min_clock
    echo 343 > /sys/devices/11400000.mali/min_clock
    
-   #I/O Scheduler tweaks (internal)
+   #Internal I/O Scheduler tweaks
    chmod 644 /sys/block/mmcblk0/queue/scheduler
    echo "cfq" > /sys/block/mmcblk0/queue/scheduler
    chmod 644 /sys/block/mmcblk0/queue/read_ahead_kb
    echo "512" > /sys/block/mmcblk0/queue/read_ahead_kb
 
-   # Set I/O Scheduler tweaks (external)
+   #External I/O Scheduler tweaks
    chmod 644 /sys/block/mmcblk1/queue/scheduler
    echo "cfq" > /sys/block/mmcblk1/queue/scheduler
    chmod 644 /sys/block/mmcblk1/queue/read_ahead_kb
