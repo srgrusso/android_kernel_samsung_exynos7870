@@ -1,0 +1,116 @@
+# OXYGEN KERNEL AROMA INSTALLER
+#
+# By @Siddhant Naik in referance with @djb77
+# Do Not Use Without My Permission!!
+
+# ROM INFO
+ini_set("force_colorspace","rgba");
+ini_set("rom_name", "Oxygen Kernel");
+ini_set("rom_version", "###VERSION###");
+ini_set("rom_author", "Siddhant Naik");
+ini_set("rom_device", "###DEVICE###");
+ini_set("rom_date", "###DATE###");
+
+# Write Temp Files
+writetmpfile("okm.prop","install=0");
+writetmpfile("spectrum.prop","install=0");
+writetmpfile("magisk.prop","install=0");
+writetmpfile("supersu.prop","install=0");
+writetmpfile("selinux.prop","install=0");
+
+# SET LANGUAGE
+loadlang("langs/en.lang");
+
+# Set Small Font to Support all fonts
+fontresload( "0", "ttf/Roboto-Regular.ttf;ttf/DroidSansFallback.ttf;", "12" ); #-- Use sets of font (Font Family)
+fontresload( "1", "ttf/Roboto-Regular.ttf;ttf/DroidSansFallback.ttf;", "14" ); #-- Use sets of font (Font Family)
+
+# SET THEME
+theme("materialize_blue-grey");
+
+# SPLASH SCREEN
+splash(3000,"splash");
+
+#SHOW KERNEL INFORMATION
+viewbox(
+    "OXYEGN KERNEL",
+    "You are about to Install <b>"+
+	  ini_get("rom_name")+
+	"</b> <~common.for> <b>"+ini_get("rom_device")+"</b>.\n\n"+
+    "\n\n"+
+      "  <b>VERSION</b>\t: <b><#selectbg_g>"+ini_get("rom_version")+"</#></b>\n"+
+      "  <b>AUTHOR</b>\t\t: <b><#selectbg_g>"+ini_get("rom_author")+"</#></b>\n"+
+	  "  <b>DEVICE</b>\t\t: <b><#selectbg_g>"+ini_get("rom_device")+"</#></b>\n"+
+	  "  <b>UPDATED</b>\t: <b><#selectbg_g>"+ini_get("rom_date")+"</#></b>\n\n\n"+
+    "Press Next to Continue the Installation...",
+    ""
+);
+
+# Display Changelogs
+viewbox(
+    "Oxygen Kernel Changelog",
+    resread("changelog.txt"),
+    ""
+ );
+
+# SELinux and Root Options
+selectbox(
+	"Oxygen Kernel",
+	"",
+	"",
+	"options.prop",
+	"Choose Root Type", "", 2,
+	"Magisk", "", 0,
+	"SuperSU", "", 1,
+	"No Root", "", 0,
+	"How do you want SELinux to be set?", "", 2,
+	"Permissive", "", 1,
+	"Enforcing", "", 0
+);
+if (prop("options.prop","selected.1")=="1") then
+	writetmpfile("magisk.prop","install=1");
+endif;
+if (prop("options.prop","selected.1")=="2") then
+	writetmpfile("supersu.prop","install=1");
+endif;
+if (prop("options.prop","selected.2")=="2") then
+	writetmpfile("selinux.prop","install=1");
+endif;
+
+# Spectrum And OKM
+selectbox(
+	"Oxygen Kernel",
+	"",
+	"",
+	"apps.prop",
+	"Spectrum", "", 2,
+	"Install", "Choose from Balance, Performance, Battery, or Gaming profiles to quickly and easily change kernel settings to your preference", 1,
+	"Do not install", "", 0,
+	"Oxygen Kernel Manager (OKM)", "", 2,
+	"Install", "Needed for tweaking kernel features", 1,
+	"Do not install", "", 0
+);
+if (prop("apps.prop","selected.1")=="1") then
+	writetmpfile("spectrum.prop","install=1");
+endif;
+if (prop("apps.prop","selected.2")=="1") then
+	writetmpfile("okm.prop","install=1");
+endif;
+
+# Confirm
+viewbox(
+    "OXYEGN KERNEL",
+	 "\n\n\n\n\n\n"+
+    "Press Next to Start the Installation...",
+    ""
+);
+
+# Start Installation
+setvar("retstatus",
+install(
+	"Oxygen Kernel",
+	"Installing, Please Wait... This may take a while.",
+	"",
+	"The installation wizard has successfully finished."
+)
+);
