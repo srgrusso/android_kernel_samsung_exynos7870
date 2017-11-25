@@ -1,0 +1,38 @@
+From bdccb93d606079ea26dfb5f629d97d27f3dd56c9 Mon Sep 17 00:00:00 2001
+From: "Christopher N. Hesse" <raymanfx@gmail.com>
+Date: Fri, 21 Jul 2017 22:32:50 +0200
+Subject: [PATCH] gpio_keys: Report KEY_WAKEUP events on home button press
+
+---
+ drivers/input/keyboard/gpio_keys.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/input/keyboard/gpio_keys.c b/drivers/input/keyboard/gpio_keys.c
+index 0ea3393bcda..f2218a7aa5a 100644
+--- a/drivers/input/keyboard/gpio_keys.c
++++ b/drivers/input/keyboard/gpio_keys.c
+@@ -454,6 +454,14 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
+ 		break;
+ 	case KEY_HOMEPAGE:
+ 		printk(KERN_INFO "HOME key is %s\n", !!state ? "pressed" : "released");
++        printk(KERN_INFO "GPIO-KEY: Sending KEY_WAKEUP (%s)", state ? "pressed" : "released");
++		if (state > 0) {
++			input_report_key(input, KEY_WAKEUP, 1);
++			input_sync(input);
++        	} else {
++			input_report_key(input, KEY_WAKEUP, 0);
++			input_sync(input);
++		}
+ 		break;
+ 	case KEY_VOLUMEUP:
+ 		printk(KERN_INFO "VolumeUp key is %s\n", !!state ? "pressed" : "released");
+@@ -935,6 +943,8 @@ static int gpio_keys_probe(struct platform_device *pdev)
+ 
+ 	device_init_wakeup(&pdev->dev, wakeup);
+ 
++	set_bit(KEY_WAKEUP, input->keybit);
++
+ 	return 0;
+ 
+ err_remove_group:
+
