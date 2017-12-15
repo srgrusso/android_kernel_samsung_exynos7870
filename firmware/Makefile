@@ -170,12 +170,12 @@ fw-shipped-$(CONFIG_TOUCHSCREEN_IST3038H) += tsp_imagis/ist3038h_a3x.fw tsp_imag
 						tsp_imagis/ist3038h_j5y.fw tsp_imagis/ist3038h_j5y_cmcs.bin \
 						tsp_imagis/ist3038h_a3xpre.fw tsp_imagis/ist3038h_a3xpre_cmcs.bin
 
-fw-shipped-$(CONFIG_KEYBOARD_TC300K) += coreriver/tc350k_j7x.fw coreriver/tc305k_j7pop.fw coreriver/tc350k_j7ve.fw
-fw-shipped-$(CONFIG_KEYBOARD_MELFAS_MHS204) += melfas_tk/mhs204g_on7xlte.fw
-fw-shipped-$(CONFIG_KEYBOARD_MELFAS_MHS2041) += melfas_tk/mhs204_j5y17.fw melfas_tk/mhs2041_j5y17.fw melfas_tk/mhs2041_j7y17.fw
-fw-shipped-$(CONFIG_KEYBOARD_MELFAS_MHS2041B) += melfas_tk/mhs2041_j5y17.fw melfas_tk/mhs2041B_j5y17.fw melfas_tk/mhs2041B_j5y17_new.fw \
-						melfas_tk/mhs2041_j7y17.fw melfas_tk/mhs2041B_j7y17.fw melfas_tk/mhs2041B_j7y17_new.fw \
-						melfas_tk/mhs2041B_j7y17_ltn.fw melfas_tk/mhs2041B_j7y17_open.fw
+#fw-shipped-$(CONFIG_KEYBOARD_TC300K) += coreriver/tc350k_j7x.fw coreriver/tc305k_j7pop.fw coreriver/tc350k_j7ve.fw
+#fw-shipped-$(CONFIG_KEYBOARD_MELFAS_MHS204) += melfas_tk/mhs204g_on7xlte.fw
+#fw-shipped-$(CONFIG_KEYBOARD_MELFAS_MHS2041) += melfas_tk/mhs204_j5y17.fw melfas_tk/mhs2041_j5y17.fw melfas_tk/mhs2041_j7y17.fw
+#fw-shipped-$(CONFIG_KEYBOARD_MELFAS_MHS2041B) += melfas_tk/mhs2041_j5y17.fw melfas_tk/mhs2041B_j5y17.fw melfas_tk/mhs2041B_j5y17_new.fw \
+#						melfas_tk/mhs2041_j7y17.fw melfas_tk/mhs2041B_j7y17.fw melfas_tk/mhs2041B_j7y17_new.fw \
+#						melfas_tk/mhs2041B_j7y17_ltn.fw melfas_tk/mhs2041B_j7y17_open.fw
 
 fw-shipped-$(CONFIG_KEYBOARD_ABOV_TOUCH_FT1804) += abov/abov_a7_max.fw
 fw-shipped-$(CONFIG_KEYBOARD_ABOV_TOUCH_T316) += abov/a96t316_a3y17.fw abov/a96t316_j5y17.fw abov/a96t316_a3xpre.fw abov/a96t316_a3xpre_new.fw abov/a96t316_a3xpre_0506.fw
