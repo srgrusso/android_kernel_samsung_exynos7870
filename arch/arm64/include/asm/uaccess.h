@@ -243,17 +243,20 @@ extern unsigned long __must_check __clear_user(void __user *addr, unsigned long 
 
 static inline unsigned long __must_check copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-	if (access_ok(VERIFY_READ, from, n))
+	if (access_ok(VERIFY_READ, from, n)) {
+		check_object_size(to, n, false);
 		n = __copy_from_user(to, from, n);
-	else /* security hole - plug it */
+	} else /* security hole - plug it */
 		memset(to, 0, n);
 	return n;
 }
 
 static inline unsigned long __must_check copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-	if (access_ok(VERIFY_WRITE, to, n))
+	if (access_ok(VERIFY_WRITE, to, n)) {
+		check_object_size(from, n, true);
 		n = __copy_to_user(to, from, n);
+	}
 	return n;
 }
 
