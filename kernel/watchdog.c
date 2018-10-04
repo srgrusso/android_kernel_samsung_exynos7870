@@ -24,10 +24,6 @@
 #include <linux/kvm_para.h>
 #include <linux/perf_event.h>
 
-#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
-#include <linux/sec_debug.h>
-#endif
-
 int watchdog_user_enabled = 1;
 int __read_mostly watchdog_thresh = 10;
 #ifdef CONFIG_SMP
@@ -473,7 +469,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 			}
 		}
 
-		pr_auto(ASL1, "BUG: soft lockup - CPU#%d stuck for %us! [%s:%d]\n",
+		pr_emerg("BUG: soft lockup - CPU#%d stuck for %us! [%s:%d]\n",
 			smp_processor_id(), duration,
 			current->comm, task_pid_nr(current));
 		__this_cpu_write(softlockup_task_ptr_saved, current);
@@ -496,15 +492,8 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 		}
 
 		add_taint(TAINT_SOFTLOCKUP, LOCKDEP_STILL_OK);
-		if (softlockup_panic) {
-#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
-			if (regs) {
-				sec_debug_set_extra_info_fault(-1, regs);
-				sec_debug_set_extra_info_backtrace(regs);
-			}
-#endif
+		if (softlockup_panic)
 			panic("softlockup: hung tasks");
-		}
 		__this_cpu_write(soft_watchdog_warn, true);
 	} else
 		__this_cpu_write(soft_watchdog_warn, false);

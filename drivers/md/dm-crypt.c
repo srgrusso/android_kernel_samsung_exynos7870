@@ -27,7 +27,6 @@
 #include <crypto/hash.h>
 #include <crypto/md5.h>
 #include <crypto/algapi.h>
-#include <crypto/fmp.h>
 
 #include <linux/device-mapper.h>
 
@@ -45,7 +44,9 @@ volatile unsigned int disk_key_flag;
 DEFINE_SPINLOCK(disk_key_lock);
 
 #if defined(CONFIG_FIPS_FMP)
+#if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_DM_CRYPT)
 extern int fmp_clear_disk_key(void);
+#endif
 #endif
 
 /*
@@ -1155,10 +1156,9 @@ static int kcryptd_io_rw(struct dm_crypt_io *io, gfp_t gfp)
 	crypt_inc_pending(io);
 
 	clone_init(io, clone);
-	clone->private_enc_mode = FMP_DISK_ENC_MODE;
-	clone->private_algo_mode = FMP_XTS_ALGO_MODE;
-	clone->key = cc->key;
-	clone->key_length = cc->key_size;
+#if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_DM_CRYPT)
+	clone->bi_sensitive_data = 1;
+#endif
 	clone->bi_iter.bi_sector = cc->start + io->sector;
 
 	generic_make_request(clone);
@@ -1623,11 +1623,9 @@ static void crypt_dtr(struct dm_target *ti)
 	kzfree(cc);
 
 #if defined(CONFIG_FIPS_FMP)
-	if (cc->hw_fmp) {
-		r = fmp_clear_disk_key();
-		if (r)
-			pr_err("dm-crypt: Fail to clear FMP disk key. r = 0x%x\n", r);
-	}
+	r = fmp_clear_disk_key();
+	if (r)
+		pr_err("dm-crypt: Fail to clear FMP disk key. r = 0x%x\n", r);
 #endif
 }
 
@@ -1708,6 +1706,11 @@ static int crypt_ctr_cipher(struct dm_target *ti,
 		(strcmp(cipher, "aes") == 0) &&
 		(strcmp(ivmode, "fmp") == 0)) {
 		pr_info("%s: H/W FMP disk encryption\n", __func__);
+#if !defined(CONFIG_MMC_DW_FMP_DM_CRYPT) && !defined(CONFIG_UFS_FMP_DM_CRYPT)
+		ti->error = "Error decoding xts-aes-fmp";
+		ret = -EINVAL;
+		goto bad;
+#endif
 		cc->hw_fmp = 1;
 
 		/* Initialize and set key */
@@ -1990,9 +1993,7 @@ static int crypt_map(struct dm_target *ti, struct bio *bio)
 	 * - for REQ_FLUSH device-mapper core ensures that no IO is in-flight
 	 * - for REQ_DISCARD caller must use flush if IO ordering matters
 	 */
-
-	if (unlikely(bio->bi_rw & (REQ_FLUSH | REQ_DISCARD) ||
-		bio_flagged(bio, BIO_BYPASS))) {
+	if (unlikely(bio->bi_rw & (REQ_FLUSH | REQ_DISCARD))) {
 		bio->bi_bdev = cc->dev->bdev;
 		if (bio_sectors(bio))
 			bio->bi_iter.bi_sector = cc->start +

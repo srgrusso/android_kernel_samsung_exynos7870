@@ -198,7 +198,7 @@ bool ion_is_heap_available(struct ion_heap *heap,
 	return true;
 }
 
-unsigned int ion_parse_heap_id(unsigned int heap_id_mask, unsigned int flags)
+int ion_parse_heap_id(unsigned int heap_id_mask, unsigned int flags)
 {
 	unsigned int heap_id = 1;
 	int i;
@@ -220,7 +220,7 @@ unsigned int ion_parse_heap_id(unsigned int heap_id_mask, unsigned int flags)
 
 	if (i == nr_heaps) {
 		pr_err("%s: bad heap flags %#x\n", __func__, flags);
-		return 0;
+		return -EINVAL;
 	}
 
 	pr_debug("%s: found new heap id %d for %s\n", __func__,
@@ -348,7 +348,6 @@ DECLARE_EXYNOS_ION_RESERVED_REGION("exynos8890-ion,", vframe);
 DECLARE_EXYNOS_ION_RESERVED_REGION("exynos8890-ion,", vscaler);
 DECLARE_EXYNOS_ION_RESERVED_REGION("exynos8890-ion,", gpu_crc);
 DECLARE_EXYNOS_ION_RESERVED_REGION("exynos8890-ion,", gpu_buffer);
-DECLARE_EXYNOS_ION_RESERVED_REGION("exynos8890-ion,", secure_camera);
 
 int ion_exynos_contig_heap_info(int region_id, phys_addr_t *phys, size_t *size)
 {

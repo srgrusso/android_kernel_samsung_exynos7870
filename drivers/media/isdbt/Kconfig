@@ -5,16 +5,7 @@ config ISDBT
 choice
 	depends on ISDBT
 	prompt "isdbt driver"
-	default ISDBT_FC8300_SPI
-
-	config ISDBT_FC83X7_SPI
-		bool "ISDBT_FC83X7_SPI"
-
-	config ISDBT_FC8350_SPI
-		bool "ISDBT_FC8350_SPI"
-
-	config ISDBT_FC8300_SPI
-		bool "ISDBT_FC8300_SPI"
+	default ISDBT_FC81800_SPI
 
 	config ISDBT_FC8180_SPI
 		bool "ISDBT_FC8180_SPI"
@@ -27,8 +18,4 @@ config ISDBT_F_TYPE_ANTENNA
 
 config ISDBT_GPIO_CLK
 	bool "ext isdbt clk cannot controled by clk_prepare"
-	default n
-
-config SEC_ISDBT_FORCE_OFF
-	bool "release isdbt resource during warmreset"
 	default n
