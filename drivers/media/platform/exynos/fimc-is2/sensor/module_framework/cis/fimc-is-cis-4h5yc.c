@@ -195,8 +195,7 @@ int sensor_4h5yc_cis_init(struct v4l2_subdev *subdev)
 #endif
 		warn("sensor_4h5yc_check_rev is fail when cis init");
 		cis->rev_flag = true;
-		ret = -EINVAL;
-		goto p_err;
+		ret = 0;
 	}
 
 	cis->cis_data->cur_width = SENSOR_4H5YC_MAX_WIDTH;

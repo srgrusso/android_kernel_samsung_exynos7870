@@ -209,12 +209,6 @@ struct usb_function {
 	void			(*free_func)(struct usb_function *f);
 	struct module		*mod;
 
-#ifdef CONFIG_USB_CONFIGFS_UEVENT
-	/* Optional function for vendor specific processing */
-	int			(*ctrlrequest)(struct usb_function *,
-					const struct usb_ctrlrequest *);
-#endif
-
 	/* runtime state management */
 	int			(*set_alt)(struct usb_function *,
 					unsigned interface, unsigned alt);
@@ -222,8 +216,6 @@ struct usb_function {
 					unsigned interface);
 	void			(*disable)(struct usb_function *);
 	int			(*setup)(struct usb_function *,
-					const struct usb_ctrlrequest *);
-	bool			(*req_match)(struct usb_function *,
 					const struct usb_ctrlrequest *);
 	void			(*suspend)(struct usb_function *);
 	void			(*resume)(struct usb_function *);
@@ -237,8 +229,6 @@ struct usb_function {
 	struct list_head		list;
 	DECLARE_BITMAP(endpoints, 32);
 	const struct usb_function_instance *fi;
-
-	unsigned int		bind_deactivated:1;
 };
 
 int usb_add_function(struct usb_configuration *, struct usb_function *);
@@ -510,9 +500,6 @@ struct usb_composite_dev {
 
 	/* protects deactivations and delayed_status counts*/
 	spinlock_t			lock;
-
-	unsigned			setup_pending:1;
-	unsigned			os_desc_pending:1;
 };
 
 extern int usb_string_id(struct usb_composite_dev *c);

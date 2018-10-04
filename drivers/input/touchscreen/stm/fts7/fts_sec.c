@@ -429,14 +429,8 @@ static ssize_t store_cmd(struct device *dev, struct device_attribute *devattr,
 		return -EINVAL;
 	}
 
-	if (strlen(buf) >= CMD_STR_LEN) {
-		printk(KERN_ERR "%s: overflow command length(strlen(buf))\n",
-				__func__);
-		return -EINVAL;
-	}
-
-	if (count >= (unsigned int)CMD_STR_LEN) {
-		printk(KERN_ERR "%s: overflow command length(count)\n",
+	if (count > CMD_STR_LEN) {
+		printk(KERN_ERR "%s: overflow command length\n",
 				__func__);
 		return -EINVAL;
 	}

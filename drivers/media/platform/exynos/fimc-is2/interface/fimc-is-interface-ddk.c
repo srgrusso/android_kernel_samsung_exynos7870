@@ -309,7 +309,7 @@ int fimc_is_lib_isp_chain_create(struct fimc_is_hw_ip *hw_ip,
 	base_addr_b  = (ulong)hw_ip->regs_b;
 	set_b_offset = (base_addr_b == 0) ? 0 : base_addr_b - base_addr;
 
-	ret = CALL_LIBOP(this, chain_create, chain_id, base_addr, set_b_offset,
+	ret = this->func->chain_create(chain_id, base_addr, set_b_offset,
 				&fimc_is_lib_cb_func);
 	if (ret) {
 		err_lib("chain_create fail (%d)", hw_ip->id);
@@ -372,8 +372,7 @@ int fimc_is_lib_isp_object_create(struct fimc_is_hw_ip *hw_ip,
 	info_lib("obj_create: chain(%d), instance(%d), rep(%d), in_type(%d),"
 		" obj_info(0x%08x), module_id(%d)\n",
 		chain_id, instance_id, rep_flag, input_type, obj_info, module_id);
-
-	ret = CALL_LIBOP(this, object_create, &this->object, obj_info, hw_ip);
+	ret = this->func->object_create(&this->object, obj_info, hw_ip);
 	if (ret) {
 		err_lib("object_create fail (%d)", hw_ip->id);
 		return -EINVAL;
@@ -412,7 +411,7 @@ void fimc_is_lib_isp_chain_destroy(struct fimc_is_hw_ip *hw_ip,
 		break;
 	}
 
-	ret = CALL_LIBOP(this, chain_destroy, chain_id);
+	ret = this->func->chain_destroy(chain_id);
 	if (ret) {
 		err_lib("chain_destroy fail (%d)", hw_ip->id);
 		return;
@@ -432,7 +431,7 @@ void fimc_is_lib_isp_object_destroy(struct fimc_is_hw_ip *hw_ip,
 	BUG_ON(!this->func);
 	BUG_ON(!this->object);
 
-	ret = CALL_LIBOP(this, object_destroy, this->object, instance_id);
+	ret = this->func->object_destroy(this->object, instance_id);
 	if (ret) {
 		err_lib("object_destroy fail (%d)", hw_ip->id);
 		return;
@@ -456,13 +455,13 @@ int fimc_is_lib_isp_set_param(struct fimc_is_hw_ip *hw_ip,
 	switch (hw_ip->id) {
 	case DEV_HW_3AA0:
 	case DEV_HW_3AA1:
-		ret = CALL_LIBOP(this, set_param, this->object, param);
+		ret = this->func->set_param(this->object, param);
 		if (ret)
 			err_lib("3aa set_param fail (%d)", hw_ip->id);
 		break;
 	case DEV_HW_ISP0:
 	case DEV_HW_ISP1:
-		ret = CALL_LIBOP(this, set_param, this->object, param);
+		ret = this->func->set_param(this->object, param);
 		if (ret)
 			err_lib("isp set_param fail (%d)", hw_ip->id);
 		break;
@@ -489,14 +488,14 @@ int fimc_is_lib_isp_set_ctrl(struct fimc_is_hw_ip *hw_ip,
 	switch (hw_ip->id) {
 	case DEV_HW_3AA0:
 	case DEV_HW_3AA1:
-		ret = CALL_LIBOP(this, set_ctrl, this->object, frame->instance,
+		ret = this->func->set_ctrl(this->object, frame->instance,
 					frame->fcount, frame->shot);
 		if (ret)
 			err_lib("3aa set_ctrl fail (%d)", hw_ip->id);
 		break;
 	case DEV_HW_ISP0:
 	case DEV_HW_ISP1:
-		ret = CALL_LIBOP(this, set_ctrl, this->object, frame->instance,
+		ret = this->func->set_ctrl(this->object, frame->instance,
 					frame->fcount, frame->shot);
 		if (ret)
 			err_lib("isp set_ctrl fail (%d)", hw_ip->id);
@@ -523,7 +522,7 @@ void fimc_is_lib_isp_shot(struct fimc_is_hw_ip *hw_ip,
 	switch (hw_ip->id) {
 	case DEV_HW_3AA0:
 	case DEV_HW_3AA1:
-		ret = CALL_LIBOP(this, shot, this->object,
+		ret = this->func->shot(this->object,
 				(struct taa_param_set *)param_set, shot);
 		if (ret)
 			err_lib("3aa shot fail (%d)", hw_ip->id);
@@ -531,7 +530,7 @@ void fimc_is_lib_isp_shot(struct fimc_is_hw_ip *hw_ip,
 		break;
 	case DEV_HW_ISP0:
 	case DEV_HW_ISP1:
-		ret = CALL_LIBOP(this, shot, this->object,
+		ret = this->func->shot(this->object,
 				(struct isp_param_set *)param_set, shot);
 		if (ret)
 			err_lib("isp shot fail (%d)", hw_ip->id);
@@ -558,14 +557,14 @@ int fimc_is_lib_isp_get_meta(struct fimc_is_hw_ip *hw_ip,
 	switch (hw_ip->id) {
 	case DEV_HW_3AA0:
 	case DEV_HW_3AA1:
-		ret = CALL_LIBOP(this, get_meta, this->object, frame->instance,
+		ret = this->func->get_meta(this->object, frame->instance,
 					frame->fcount, frame->shot);
 		if (ret)
 			err_lib("3aa get_meta fail (%d)", hw_ip->id);
 		break;
 	case DEV_HW_ISP0:
 	case DEV_HW_ISP1:
-		ret = CALL_LIBOP(this, get_meta, this->object, frame->instance,
+		ret = this->func->get_meta(this->object, frame->instance,
 					frame->fcount, frame->shot);
 		if (ret)
 			err_lib("isp get_meta fail (%d)", hw_ip->id);
@@ -588,7 +587,7 @@ void fimc_is_lib_isp_stop(struct fimc_is_hw_ip *hw_ip,
 	BUG_ON(!this->func);
 	BUG_ON(!this->object);
 
-	ret = CALL_LIBOP(this, stop, this->object, instance_id);
+	ret = this->func->stop(this->object, instance_id);
 	if (ret) {
 		err_lib("object_suspend fail (%d)", hw_ip->id);
 		return;
@@ -612,9 +611,7 @@ int fimc_is_lib_isp_create_tune_set(struct fimc_is_lib_isp *this,
 	tune_set.addr = addr;
 	tune_set.size = size;
 	tune_set.decrypt_flag = flag;
-
-	ret = CALL_LIBOP(this, create_tune_set, this->object, instance_id,
-				&tune_set);
+	ret = this->func->create_tune_set(this->object, instance_id, &tune_set);
 	if (ret) {
 		err_lib("create_tune_set fail (%d)", ret);
 		return ret;
@@ -634,7 +631,7 @@ int fimc_is_lib_isp_apply_tune_set(struct fimc_is_lib_isp *this,
 	BUG_ON(!this->func);
 	BUG_ON(!this->object);
 
-	ret = CALL_LIBOP(this, apply_tune_set, this->object, instance_id, index);
+	ret = this->func->apply_tune_set(this->object, instance_id, index);
 	if (ret) {
 		err_lib("apply_tune_set fail (%d)", ret);
 		return ret;
@@ -652,7 +649,7 @@ int fimc_is_lib_isp_delete_tune_set(struct fimc_is_lib_isp *this,
 	BUG_ON(!this->func);
 	BUG_ON(!this->object);
 
-	ret = CALL_LIBOP(this, delete_tune_set, this->object, instance_id, index);
+	ret = this->func->delete_tune_set(this->object, instance_id, index);
 	if (ret) {
 		err_lib("delete_tune_set fail (%d)", ret);
 		return ret;
@@ -677,7 +674,7 @@ int fimc_is_lib_isp_load_cal_data(struct fimc_is_lib_isp *this,
 	version[FIMC_IS_CAL_VER_SIZE] = '\0';
 	info_lib("CAL version: %s\n", version);
 
-	ret = CALL_LIBOP(this, load_cal_data, this->object, instance_id, addr);
+	ret = this->func->load_cal_data(this->object, instance_id, addr);
 	if (ret) {
 		err_lib("apply_tune_set fail (%d)", ret);
 		return ret;
@@ -695,8 +692,7 @@ int fimc_is_lib_isp_get_cal_data(struct fimc_is_lib_isp *this,
 	BUG_ON(!this->func);
 	BUG_ON(!this->object);
 
-	ret = CALL_LIBOP(this, get_cal_data, this->object, instance_id,
-				data, type);
+	ret = this->func->get_cal_data(this->object, instance_id, data, type);
 	if (ret) {
 		err_lib("apply_tune_set fail (%d)", ret);
 		return ret;
@@ -715,8 +711,7 @@ int fimc_is_lib_isp_sensor_info_mode_chg(struct fimc_is_lib_isp *this,
 	BUG_ON(!this->func);
 	BUG_ON(!this->object);
 
-	ret = CALL_LIBOP(this, sensor_info_mode_chg, this->object, instance_id,
-				shot);
+	ret = this->func->sensor_info_mode_chg(this->object, instance_id, shot);
 	if (ret) {
 		err_lib("sensor_info_mode_chg fail (%d)", ret);
 		return ret;
@@ -734,7 +729,7 @@ int fimc_is_lib_isp_sensor_update_control(struct fimc_is_lib_isp *this,
 	BUG_ON(!this->func);
 	BUG_ON(!this->object);
 
-	ret = CALL_LIBOP(this, sensor_update_ctl, this->object, instance_id,
+	ret = this->func->sensor_update_ctl(this->object, instance_id,
 				frame_count, shot);
 	if (ret) {
 		err_lib("sensor_update_ctl fail (%d)", ret);

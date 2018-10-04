@@ -31,12 +31,7 @@
 #include <linux/regmap.h>
 #include <linux/notifier.h>
 
-#ifdef CONFIG_BATTERY_SAMSUNG_V2 
-#include "../../../../drivers/battery_v2/include/sec_charging_common.h"
-#else
-#include <linux/battery/sec_charging_common.h> 
-#endif
-
+#include <linux/battery/sec_charging_common.h>
 //#include <linux/battery/charger/s2mu005_charger.h>
 //#include <linux/battery/fuelgauge/s2mu005_fuelgauge.h>
 

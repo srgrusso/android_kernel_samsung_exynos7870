@@ -18,7 +18,7 @@
 #include <linux/sensor/sensors_core.h>
 #include <linux/wakelock.h>
 
-#define DEV_NAME			"K6DS3TR"
+#define LSM6DS3_DEV_NAME		"LSM6DS3"
 #define VENDOR_NAME			"STM"
 #define MODULE_NAME_ACC			"accelerometer_sensor"
 #define MODULE_NAME_GYRO		"gyro_sensor"

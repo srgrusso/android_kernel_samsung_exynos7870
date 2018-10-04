@@ -24,8 +24,6 @@ source "drivers/staging/samsung/sec_notifier/Kconfig"
 
 source "drivers/muic/Kconfig"
 
-source "drivers/ifpmic/Kconfig"
-
 source "drivers/ide/Kconfig"
 
 source "drivers/scsi/Kconfig"
@@ -97,6 +95,8 @@ source "sound/Kconfig"
 source "drivers/hid/Kconfig"
 
 source "drivers/usb/Kconfig"
+
+source "drivers/ccic/Kconfig"
 
 source "drivers/uwb/Kconfig"
 
@@ -194,8 +194,6 @@ source "drivers/thunderbolt/Kconfig"
 
 source "drivers/trace/Kconfig"
 
-source "drivers/ccic/Kconfig"
-
 source "drivers/bts/Kconfig"
 
 source "drivers/gud/Kconfig"
@@ -212,8 +210,6 @@ source "drivers/fingerprint/Kconfig"
 
 source "drivers/gps/Kconfig"
 
-source "drivers/sensorhub/Kconfig"
-
-source "drivers/five/Kconfig"
+source "drivers/sensorhub/stm32/Kconfig"
 
 endmenu

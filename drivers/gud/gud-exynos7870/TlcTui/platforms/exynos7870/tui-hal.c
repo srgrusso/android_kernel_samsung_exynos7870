@@ -30,12 +30,17 @@
 #include "dciTui.h"
 #include "tlcTui.h"
 #include "tui-hal.h"
-#if defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) || defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX_TCLM)
-extern void trustedui_mode_on(void);
-extern void trustedui_mode_off(void);
-#elif defined(CONFIG_TOUCHSCREEN_IST3038H)
-extern void trustedui_mode_ist_on(void);
-extern void trustedui_mode_ist_off(void);
+#if defined(CONFIG_TOUCHSCREEN_FTS) || defined(CONFIG_TOUCHSCREEN_FTS5AD56)
+#include <linux/i2c/fts.h>
+#endif
+#if defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX)
+#include <linux/i2c/zinitix_bt532_ts.h>
+#endif
+#if defined(CONFIG_TOUCHSCREEN_SEC_TS)
+#include "../../../input/touchscreen/sec_ts/sec_ts.h"
+#endif
+#if defined(CONFIG_TOUCHSCREEN_IST3038H)
+#include "../../../input/touchscreen/imagis_30xxh/ist30xxh.h"
 #endif
 
 /* I2C register for reset */
@@ -396,15 +401,10 @@ uint32_t hal_tui_deactivate(void)
 	pr_info(KERN_ERR "Disable touch!\n");
 	disable_irq(tsp_irq_num);
 
-#if defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) || defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX_TCLM)
+#if defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) || defined(CONFIG_TOUCHSCREEN_IST3038H)
 		tui_delay(5);
 		/*esd timer disable*/
 		trustedui_mode_on();
-		tui_delay(95);
-#elif defined(CONFIG_TOUCHSCREEN_IST3038H)
-		tui_delay(5);
-		/*esd timer disable*/
-		trustedui_mode_ist_on();
 		tui_delay(95);
 #else
 		tui_delay(1);
@@ -429,17 +429,12 @@ uint32_t hal_tui_deactivate(void)
 		enable_irq(tsp_irq_num);
 		release_i2c_clock();
 		
-#if defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) || defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX_TCLM)
+#if defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) || defined(CONFIG_TOUCHSCREEN_IST3038H)
 		tui_delay(5);
 		/*esd timer enable*/
 		trustedui_mode_off();
 		tui_delay(95);
-#elif defined(CONFIG_TOUCHSCREEN_IST3038H)
-		tui_delay(5);
-		/*esd timer enable*/
-		trustedui_mode_ist_off();
-		tui_delay(95);
-#endif
+#endif // defined(CONFIG_TOUCHSCREEN_IST3038H)
 
 		/* Clear linux TUI flag */
 		trustedui_set_mode(TRUSTEDUI_MODE_OFF);
@@ -479,15 +474,10 @@ uint32_t hal_tui_activate(void)
 	enable_irq(tsp_irq_num);
 	release_i2c_clock();
 
-#if defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) || defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX_TCLM)
+#if defined(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) || defined(CONFIG_TOUCHSCREEN_IST3038H)
 	tui_delay(5);
 	/*esd timer enable*/
 	trustedui_mode_off();
-	tui_delay(95);
-#elif defined(CONFIG_TOUCHSCREEN_IST3038H)
-	tui_delay(5);
-	/*esd timer enable*/
-	trustedui_mode_ist_off();
 	tui_delay(95);
 #endif
 

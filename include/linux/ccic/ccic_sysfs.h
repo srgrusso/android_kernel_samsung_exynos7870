@@ -1,7 +1,3 @@
-#if defined(CONFIG_IFPMIC_SUPPORT)
-#include <linux/ifpmic/ccic/ccic_sysfs.h>
-#endif
-
 #ifndef __CCIC_SYSFS__
 #define __CCIC_SYSFS__
 

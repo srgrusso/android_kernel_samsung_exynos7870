@@ -2,7 +2,7 @@
  * Process CIS information from OTP for customer platform
  * (Handle the MAC address and module information)
  *
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -25,7 +25,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_custom_cis.c 747655 2018-02-19 08:09:31Z $
+ * $Id: dhd_custom_cis.c 685046 2017-02-15 08:10:34Z $
  */
 
 #include <typedefs.h>
@@ -368,7 +368,6 @@ dhd_set_default_macaddr(dhd_pub_t *dhdp)
 {
 	char iovbuf[WLC_IOCTL_SMLEN];
 	struct ether_addr *mac;
-	int ret;
 
 	if (!dhdp) {
 		DHD_ERROR(("%s: dhdp is NULL\n", __FUNCTION__));
@@ -378,9 +377,10 @@ dhd_set_default_macaddr(dhd_pub_t *dhdp)
 	mac = &dhdp->mac;
 
 	/* Read the default MAC address */
-	ret = dhd_iovar(dhdp, 0, "cur_etheraddr", NULL, 0, iovbuf, sizeof(iovbuf),
-			FALSE);
-	if (ret < 0) {
+	memset(iovbuf, 0, sizeof(iovbuf));
+	bcm_mkiovar("cur_etheraddr", 0, 0, iovbuf, sizeof(iovbuf));
+	if (dhd_wl_ioctl_cmd(dhdp, WLC_GET_VAR, iovbuf,
+		sizeof(iovbuf), FALSE, 0) < 0) {
 		DHD_ERROR(("%s: Can't get the default MAC address\n", __FUNCTION__));
 		return BCME_NOTUP;
 	}
@@ -974,7 +974,7 @@ write_cid:
 }
 
 #ifdef SUPPORT_MULTIPLE_MODULE_CIS
-bool
+static bool
 dhd_check_module(char *module_name)
 {
 	char vname[MAX_VNAME_LEN];

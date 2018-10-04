@@ -109,13 +109,7 @@ void panic(const char *fmt, ...)
 	va_start(args, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
-
-#ifdef CONFIG_SEC_DEBUG_AUTO_SUMMARY
-	if(buf[strlen(buf)-1] == '\n')
-		buf[strlen(buf)-1] = '\0';
-#endif
-
-	pr_auto(ASL5, "Kernel panic - not syncing: %s\n", buf);
+	pr_emerg("Kernel panic - not syncing: %s\n", buf);
 
 	exynos_ss_prepare_panic();
 	exynos_ss_dump_panic(buf, (size_t)strnlen(buf, sizeof(buf)));
@@ -464,6 +458,7 @@ static void warn_slowpath_common(const char *file, int line, void *caller,
 	printk(BAT_AUTOMAION_TEST_PREFIX_WARN "KERNEL WARN END\n");
 #endif
 }
+
 
 void warn_slowpath_fmt(const char *file, int line, const char *fmt, ...)
 {

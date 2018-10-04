@@ -6,16 +6,16 @@
 
 #define EXTEND_BRIGHTNESS	306
 #define UI_MAX_BRIGHTNESS	255
+#define UI_MIN_BRIGHTNESS	0
 #define UI_DEFAULT_BRIGHTNESS	128
+#define NORMAL_TEMPERATURE	25	/* 25 degrees Celsius */
 
-#define HX8279D_ID_REG				0xFC
-#define HX8279D_DUAL_REG				0xB1
-
+#define HX8279D_ID_REG				0xB1
 #define HX8279D_ID_LEN				3 /* 1 */
 
 #define BOE_PANEL_ID 0x82790d
 #define CRT_PANEL_ID 0x82790e
-#define BOE2_PANEL_ID 0x827910 //BOE 8.5 for T58X
+#define BOE2_PANEL_ID 0x827910 //BOE 8.5
 
 struct mipi_cmd {
 	u8 cmd[2];
@@ -559,6 +559,7 @@ struct mipi_cmd SEQ_CMD_TABLE_CPT[] = {
 	{{0xB0, 0x04}},
 	{{0xC1, 0x02}},
 };
+
 struct mipi_cmd SEQ_CMD_TABLE_BOE2[] = {
 	{{0xB0, 0x00}},
 	{{0xB6, 0x03}},
@@ -817,7 +818,9 @@ struct mipi_cmd SEQ_CMD_TABLE_BOE2[] = {
 	{{0xC6, 0xAF}},
 	{{0xC7, 0xB5}},
 	{{0xC8, 0xB8}},
+
 };
+
 static const struct mipi_cmd SEQ_CMD_TABLE_BL[] = {
 	{{0xB0, 0x04}}, // page4 is for CABC
 	{{0xB5, 0x02}}, // Freq = 8Khz

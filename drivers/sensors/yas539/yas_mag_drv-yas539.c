@@ -298,8 +298,9 @@ static int enable_rcoil(void)
 	rt = rcoil_and_record_data(1, xy1y2, &overflow);
 	if (rt < 0)
 		return rt;
-
-	return 0;
+	if (overflow)
+		return 0;
+	return 1;
 }
 
 static int reset_yas539(void)
@@ -453,12 +454,9 @@ static int yas_measure(struct yas_data *data, int num, int *ouflow)
 		if (*ouflow)
 			driver.flowflag = 1;
 		driver.measure_state = YAS539_MAG_STATE_INIT_COIL;
-
-		if(driver.invalid_data) {
-			for (i = 0; i < 3; i++) {
-				if (!*ouflow)
-					data->xyz.v[i] += 3;
-			}
+		for (i = 0; i < 3; i++) {
+			if (!*ouflow)
+				data->xyz.v[i] += 3;
 		}
 	}
 	return 1;

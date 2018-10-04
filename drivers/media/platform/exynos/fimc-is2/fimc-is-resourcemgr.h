@@ -74,7 +74,7 @@ struct fimc_is_clk_gate_ctrl {
 };
 
 struct fimc_is_static_mem {
-	ulong paddr;
+	u32 paddr;
 	ulong vaddr;
 	ulong size;
 };
