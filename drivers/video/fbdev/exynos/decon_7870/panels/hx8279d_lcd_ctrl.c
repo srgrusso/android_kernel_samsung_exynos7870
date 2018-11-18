@@ -372,6 +372,13 @@ static int hx8279d_init(struct lcd_info *lcd)
 			dev_err(&lcd->ld->dev, "%s: failed to write CMD : SEQ_CMD_TABLE\n", __func__);
 			goto init_err;
 		}
+	} else if (lcdtype == BOE2_PANEL_ID) {
+		dev_info(&lcd->ld->dev, "%s: BOE2 PANEL. [0x%x]\n", __func__, lcdtype);
+		ret = dsi_write_table(lcd, SEQ_CMD_TABLE_BOE2, ARRAY_SIZE(SEQ_CMD_TABLE_BOE2));
+		if (ret < 0) {
+			dev_err(&lcd->ld->dev, "%s: failed to write CMD : SEQ_CMD_TABLE_BOE2\n", __func__);
+			goto init_err;
+		}
 	} else {
 		dev_info(&lcd->ld->dev, "%s: CPT PANEL. [0x%x]\n", __func__, lcdtype);
 		ret = dsi_write_table(lcd, SEQ_CMD_TABLE_CPT, ARRAY_SIZE(SEQ_CMD_TABLE_CPT));
