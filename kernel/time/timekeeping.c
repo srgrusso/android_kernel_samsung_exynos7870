@@ -904,12 +904,12 @@ int timekeeping_notify(struct clocksource *clock)
 }
 
 /**
- * getrawmonotonic - Returns the raw monotonic time in a timespec
- * @ts:		pointer to the timespec to be set
+ * getrawmonotonic64 - Returns the raw monotonic time in a timespec
+ * @ts:		pointer to the timespec64 to be set
  *
  * Returns the raw monotonic time (completely un-modified by ntp)
  */
-void getrawmonotonic(struct timespec *ts)
+void getrawmonotonic64(struct timespec64 *ts)
 {
 	struct timekeeper *tk = &tk_core.timekeeper;
 	struct timespec64 ts64;
@@ -925,9 +925,10 @@ void getrawmonotonic(struct timespec *ts)
 
 	ts64.tv_nsec = 0;
 	timespec64_add_ns(&ts64, nsecs);
-	*ts = timespec64_to_timespec(ts64);
+	*ts = ts64;
 }
-EXPORT_SYMBOL(getrawmonotonic);
+EXPORT_SYMBOL(getrawmonotonic64);
+
 
 /**
  * timekeeping_valid_for_hres - Check if timekeeping is suitable for hres
@@ -1606,24 +1607,24 @@ out:
 }
 
 /**
- * getboottime - Return the real time of system boot.
- * @ts:		pointer to the timespec to be set
+ * getboottime64 - Return the real time of system boot.
+ * @ts:		pointer to the timespec64 to be set
  *
- * Returns the wall-time of boot in a timespec.
+ * Returns the wall-time of boot in a timespec64.
  *
  * This is based on the wall_to_monotonic offset and the total suspend
  * time. Calls to settimeofday will affect the value returned (which
  * basically means that however wrong your real time clock is at boot time,
  * you get the right time here).
  */
-void getboottime(struct timespec *ts)
+void getboottime64(struct timespec64 *ts)
 {
 	struct timekeeper *tk = &tk_core.timekeeper;
 	ktime_t t = ktime_sub(tk->offs_real, tk->offs_boot);
 
-	*ts = ktime_to_timespec(t);
+	*ts = ktime_to_timespec64(t);
 }
-EXPORT_SYMBOL_GPL(getboottime);
+EXPORT_SYMBOL_GPL(getboottime64);
 
 unsigned long get_seconds(void)
 {
@@ -1656,7 +1657,7 @@ struct timespec current_kernel_time(void)
 }
 EXPORT_SYMBOL(current_kernel_time);
 
-struct timespec get_monotonic_coarse(void)
+struct timespec64 get_monotonic_coarse64(void)
 {
 	struct timekeeper *tk = &tk_core.timekeeper;
 	struct timespec64 now, mono;
@@ -1672,7 +1673,7 @@ struct timespec get_monotonic_coarse(void)
 	set_normalized_timespec64(&now, now.tv_sec + mono.tv_sec,
 				now.tv_nsec + mono.tv_nsec);
 
-	return timespec64_to_timespec(now);
+	return now;
 }
 
 /*
