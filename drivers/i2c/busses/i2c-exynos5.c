@@ -1776,8 +1776,6 @@ static int exynos5_i2c_probe(struct platform_device *pdev)
 	}
 
 #endif
-	return 0;
-
 	clk_disable(i2c->clk);
 
 	return 0;
@@ -1808,8 +1806,6 @@ static int exynos5_i2c_suspend_noirq(struct device *dev)
 	i2c_lock_adapter(&i2c->adap);
 	i2c->suspended = 1;
 	i2c_unlock_adapter(&i2c->adap);
-
-	clk_unprepare(i2c->clk);
 
 	return 0;
 }
