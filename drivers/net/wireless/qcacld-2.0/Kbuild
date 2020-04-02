@@ -136,13 +136,13 @@ endif
 # Feature flags which are not (currently) configurable via Kconfig
 
 #Whether to build debug version
-BUILD_DEBUG_VERSION := 1
+BUILD_DEBUG_VERSION := 0
 
 #Enable this flag to build driver in diag version
-BUILD_DIAG_VERSION := 1
+BUILD_DIAG_VERSION := 0
 
 #Do we panic on bug?  default is to warn
-PANIC_ON_BUG := 1
+PANIC_ON_BUG := 0
 
 #Re-enable wifi on WDI timeout
 RE_ENABLE_WIFI_ON_WDI_TIMEOUT := 0
@@ -296,7 +296,6 @@ HAVE_CFG80211 := 0
 endif
 endif
 
-$(warning $(WLAN_ROOT))
 ############ COMMON ############
 COMMON_DIR :=	CORE/SERVICES/COMMON
 COMMON_INC :=	-I$(WLAN_ROOT)/$(COMMON_DIR)
