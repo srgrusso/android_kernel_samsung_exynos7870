@@ -1622,7 +1622,7 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 		}
 #endif
 
-#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+/* #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 		if (EventID == EVENTID_ENTER_POINTER)
 #ifdef FTS_SUPPROT_MULTIMEDIA
 			tsp_debug_info(true, &info->client->dev,
@@ -1682,10 +1682,11 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 					info->panel_revision, info->fw_main_version_of_ic,
 					info->flip_enable, info->mshover_enabled, info->mainscr_disable);
 			}
-#endif
+#endif */
+		if (EventID == EVENTID_LEAVE_POINTER) {
 			info->finger[TouchID].mcount = 0;
-		} 
-#ifdef FTS_SUPPORT_HOVER
+		}
+/* #ifdef FTS_SUPPORT_HOVER
 		else if (EventID == EVENTID_HOVER_LEAVE_POINTER) {
 			tsp_debug_dbg(true, &info->client->dev,
 				"[HR] tID:%d Ver[%02X%04X%01X%01X]\n",
@@ -1693,8 +1694,8 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 				info->panel_revision, info->fw_main_version_of_ic,
 				info->flip_enable, info->mshover_enabled);
 			info->finger[TouchID].mcount = 0;
-		} 
-#endif
+		}
+#endif */
 		else if (EventID == EVENTID_MOTION_POINTER && info->fts_power_state != FTS_POWER_STATE_LOWPOWER)
 			info->finger[TouchID].mcount++;
 
