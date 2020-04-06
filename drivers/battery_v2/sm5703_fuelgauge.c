@@ -113,7 +113,7 @@ static void sm5703_pr_ver_info(struct i2c_client *client)
 }
 #endif
 
-static void sm5703_fg_test_read(struct i2c_client *client)
+/* static void sm5703_fg_test_read(struct i2c_client *client)
 {
 	int ret, ret1, ret2, ret3, ret4;
 
@@ -166,7 +166,7 @@ static void sm5703_fg_test_read(struct i2c_client *client)
 	ret3 = sm5703_fg_i2c_read_word(client, 0x87);
 	ret4 = sm5703_fg_i2c_read_word(client, 0x28);
 	pr_info("0x85=0x%04x, 0x86=0x%04x, 0x87=0x%04x, 0x28=0x%04x \n", ret1, ret2, ret3, ret4);
-}
+} */
 
 static int sm5703_get_temperature(struct sm5703_fuelgauge_data *fuelgauge)
 {
@@ -286,8 +286,7 @@ static u32 sm5703_get_soc(struct sm5703_fuelgauge_data *fuelgauge)
 
 	dev_info(&fuelgauge->i2c->dev, "%s: read = 0x%x, soc = %d\n", __func__, ret, soc);
 
-	/* temp for SM5703 FG debug */
-	sm5703_fg_test_read(fuelgauge->i2c);
+	//sm5703_fg_test_read(fuelgauge->i2c);
 
 	return soc;
 }
