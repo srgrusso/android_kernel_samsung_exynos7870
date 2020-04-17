@@ -1521,6 +1521,15 @@ static int btrfs_remount(struct super_block *sb, int *flags, char *data)
 
 		sb->s_flags |= MS_RDONLY;
 
+		/*
+		 * Setting MS_RDONLY will put the cleaner thread to
+		 * sleep at the next loop if it's already active.
+		 * If it's already asleep, we'll leave unused block
+		 * groups on disk until we're mounted read-write again
+		 * unless we clean them up here.
+		 */
+		btrfs_delete_unused_bgs(fs_info);
+
 		btrfs_dev_replace_suspend_for_unmount(fs_info);
 		btrfs_scrub_cancel(fs_info);
 		btrfs_pause_balance(fs_info);
