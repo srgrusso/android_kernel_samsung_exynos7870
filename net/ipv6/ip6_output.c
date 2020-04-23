@@ -105,7 +105,7 @@ static int ip6_finish_output2(struct sk_buff *skb)
 	}
 
 	rcu_read_lock_bh();
-	nexthop = rt6_nexthop((struct rt6_info *)dst);
+	nexthop = rt6_nexthop((struct rt6_info *)dst, &ipv6_hdr(skb)->daddr);
 	neigh = __ipv6_neigh_lookup_noref(dst->dev, nexthop);
 	if (unlikely(!neigh))
 		neigh = __neigh_create(&nd_tbl, nexthop, dst->dev, false);
@@ -760,13 +760,11 @@ slow_path:
 		if (len < left)	{
 			len &= ~7;
 		}
-		/*
-		 *	Allocate buffer.
-		 */
 
-		if ((frag = alloc_skb(len + hlen + sizeof(struct frag_hdr) +
-				      hroom + troom, GFP_ATOMIC)) == NULL) {
-			NETDEBUG(KERN_INFO "IPv6: frag: no memory for new fragment!\n");
+		/* Allocate buffer */
+		frag = alloc_skb(len + hlen + sizeof(struct frag_hdr) +
+				 hroom + troom, GFP_ATOMIC);
+		if (!frag) {
 			IP6_INC_STATS(net, ip6_dst_idev(skb_dst(skb)),
 				      IPSTATS_MIB_FRAGFAILS);
 			err = -ENOMEM;
@@ -936,7 +934,8 @@ static int ip6_dst_lookup_tail(struct sock *sk,
 	 */
 	rt = (struct rt6_info *) *dst;
 	rcu_read_lock_bh();
-	n = __ipv6_neigh_lookup_noref(rt->dst.dev, rt6_nexthop(rt));
+	n = __ipv6_neigh_lookup_noref(rt->dst.dev,
+				      rt6_nexthop(rt, &fl6->daddr));
 	err = n && !(n->nud_state & NUD_VALID) ? -EINVAL : 0;
 	rcu_read_unlock_bh();
 
