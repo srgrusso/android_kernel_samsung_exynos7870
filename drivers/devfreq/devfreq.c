@@ -31,7 +31,7 @@
 
 #ifdef CONFIG_SOC_EXYNOS7870
 #define DF_MAX_VOLT		1500000
-#define DF_MIN_VOLT		500000
+#define DF_MIN_VOLT		200000
 #define DF_VOLT_STEP		1
 #else
 #error "Please define core voltage ranges for current SoC."

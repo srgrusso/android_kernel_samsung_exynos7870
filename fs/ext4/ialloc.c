@@ -316,9 +316,6 @@ out:
 		if (!fatal)
 			fatal = err;
 	} else {
-		/* for debugging, sangwoo2.lee */
-		print_bh(sb, bitmap_bh, 0, EXT4_BLOCK_SIZE(sb));
-		/* for debugging */
 		ext4_error(sb, "bit already cleared for inode %lu", ino);
 		if (gdp && !EXT4_MB_GRP_IBITMAP_CORRUPT(grp)) {
 			int count;
@@ -1124,7 +1121,7 @@ struct inode *ext4_orphan_get(struct super_block *sb, unsigned long ino)
 	int bit;
 	struct buffer_head *bitmap_bh = NULL;
 	struct inode *inode = NULL;
-	int err = -EIO;
+	int err = -EFSCORRUPTED;
 
 	if (ino < EXT4_FIRST_INO(sb) || ino > max_ino)
 		goto bad_orphan;
@@ -1145,7 +1142,7 @@ struct inode *ext4_orphan_get(struct super_block *sb, unsigned long ino)
 	if (!ext4_test_bit(bit, bitmap_bh->b_data))
 		goto bad_orphan;
 
-	inode = ext4_iget(sb, ino);
+	inode = ext4_iget(sb, ino, EXT4_IGET_NORMAL);
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
 		ext4_error(sb, "couldn't read orphan inode %lu (err %d)",
