@@ -45,8 +45,7 @@
 #include <linux/of_gpio.h>
 #endif /* CONFIG_OF */
 
-#define DEBUG_MUIC
-//#undef DEBUG_MUIC
+//#define DEBUG_MUIC
 
 #ifdef DEBUG_MUIC
 
