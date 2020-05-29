@@ -2498,7 +2498,8 @@ static int rt_fill_info(struct net *net,  __be32 dst, __be32 src,
 	if (rtnl_put_cacheinfo(skb, &rt->dst, 0, expires, error) < 0)
 		goto nla_put_failure;
 
-	return nlmsg_end(skb, nlh);
+	nlmsg_end(skb, nlh);
+	return 0;
 
 nla_put_failure:
 	nlmsg_cancel(skb, nlh);
@@ -2596,7 +2597,7 @@ static int inet_rtm_getroute(struct sk_buff *in_skb, struct nlmsghdr *nlh)
 	err = rt_fill_info(net, dst, src, &fl4, skb,
 			   NETLINK_CB(in_skb).portid, nlh->nlmsg_seq,
 			   RTM_NEWROUTE, 0, 0);
-	if (err <= 0)
+	if (err < 0)
 		goto errout_free;
 
 	err = rtnl_unicast(skb, net, NETLINK_CB(in_skb).portid);
