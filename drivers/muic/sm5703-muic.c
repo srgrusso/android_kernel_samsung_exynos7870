@@ -45,8 +45,7 @@
 #include <linux/of_gpio.h>
 #endif /* CONFIG_OF */
 
-#define DEBUG_MUIC
-//#undef DEBUG_MUIC
+//#define DEBUG_MUIC
 
 #ifdef DEBUG_MUIC
 
@@ -71,6 +70,7 @@ static void sm5703_reg_log(u8 reg, u8 value, u8 rw)
 	sm5703_log_cnt++;
 	if(sm5703_log_cnt >= MAX_LOG) sm5703_log_cnt = 0;
 }
+
 static void sm5703_print_reg_log(void)
 {
 	int i;
@@ -89,6 +89,7 @@ static void sm5703_print_reg_log(void)
 	}
 	pr_info("%s:%s\n", __func__, mesg);
 }
+
 void sm5703_read_reg_dump(struct sm5703_muic_data *muic, char *mesg)
 {
 	int val;
@@ -114,6 +115,7 @@ void sm5703_read_reg_dump(struct sm5703_muic_data *muic, char *mesg)
 	val = i2c_smbus_read_byte_data(muic->i2c, SM5703_MUIC_REG_RSVD_ID1);
 	sprintf(mesg+strlen(mesg),"RS1:%x", val);
 }
+
 void sm5703_print_reg_dump(struct sm5703_muic_data *muic_data)
 {
 	char mesg[256]="";
@@ -122,7 +124,7 @@ void sm5703_print_reg_dump(struct sm5703_muic_data *muic_data)
 
 	pr_info("%s:%s\n", __func__, mesg);
 }
-#ifdef DEBUG_MUIC
+
 static void sm5703_show_debug_info(struct work_struct *work)
 {
 	struct sm5703_muic_data *muic_data =
@@ -136,7 +138,6 @@ static void sm5703_show_debug_info(struct work_struct *work)
 	INIT_DELAYED_WORK(&muic_data->usb_work, sm5703_show_debug_info);
 	schedule_delayed_work(&muic_data->usb_work, msecs_to_jiffies(60000));
 }
-#endif
 #endif
 
 extern struct muic_platform_data muic_pdata;
@@ -344,6 +345,7 @@ static ssize_t sm5703_muic_show_interrupt_status(struct device *dev,
 	}
 	return sprintf(buf, "st1:0x%x st2:0x%x\n", st1, st2);
 }
+
 static ssize_t sm5703_muic_show_registers(struct device *dev,
 					   struct device_attribute *attr,
 					   char *buf)
@@ -352,7 +354,9 @@ static ssize_t sm5703_muic_show_registers(struct device *dev,
 	char mesg[256]="";
 
 	mutex_lock(&muic_data->muic_mutex);
+#ifdef DEBUG_MUIC
 	sm5703_read_reg_dump(muic_data, mesg);
+#endif
 	mutex_unlock(&muic_data->muic_mutex);
 	pr_info("%s:%s\n", __func__, mesg);
 
@@ -1561,8 +1565,9 @@ static void sm5703_muic_detect_dev(struct sm5703_muic_data *muic_data)
 	if (val3 & DEV_TYPE3_MHL)
 	{
 #if defined (CONFIG_MUIC_SM5703_MHL_WA)
+#ifdef DEBUG_MUIC
 		sm5703_print_reg_dump(muic_data);
-
+#endif
 		pr_info("%s : MHL DETECTED : MUIC Reset\n", MUIC_DEV_NAME);
 		sm5703_i2c_write_byte(i2c, SM5703_MUIC_REG_RESET, 0x01);
 		sm5703_muic_reg_init(muic_data);
@@ -1776,13 +1781,16 @@ static irqreturn_t sm5703_muic_irq_thread(int irq, void *data)
 		if(ctrl == 0x1F)
 		{
 			/* CONTROL register is reset to 1F */
+#ifdef DEBUG_MUIC
 			sm5703_print_reg_log();
 			sm5703_print_reg_dump(muic_data);
+#endif
 			pr_err("%s: err muic could have been reseted. Initilize!!\n",
 				__func__);
 			sm5703_muic_reg_init(muic_data);
+#ifdef DEBUG_MUIC
 			sm5703_print_reg_dump(muic_data);
-
+#endif
 			/* MUIC Interrupt On */
 			set_int_mask(muic_data, false);
 		}
