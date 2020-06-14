@@ -53,6 +53,7 @@ static int sg_version_num = 30536;	/* 2 digits for each component */
 #include <linux/ratelimit.h>
 #include <linux/sizes.h>
 #include <linux/cred.h> /* for sg_check_file_access() */
+#include <linux/sizes.h>
 
 #include "scsi.h"
 #include <scsi/scsi_dbg.h>
@@ -822,6 +823,11 @@ sg_common_write(Sg_fd * sfp, Sg_request * srp,
 	SCSI_LOG_TIMEOUT(4, sg_printk(KERN_INFO, sfp->parentdp,
 			"sg_common_write:  scsi opcode=0x%02x, cmd_size=%d\n",
 			(int) cmnd[0], (int) hp->cmd_len));
+
+	if (hp->dxfer_len >= SZ_256M) {
+		sg_remove_request(sfp, srp);
+		return -EINVAL;
+	}
 
 	if (hp->dxfer_len >= SZ_256M) {
 		sg_remove_request(sfp, srp);

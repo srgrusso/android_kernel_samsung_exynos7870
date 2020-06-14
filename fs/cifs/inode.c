@@ -879,6 +879,7 @@ cifs_get_inode_info(struct inode **inode, const char *full_path,
 		/* if uniqueid is different, return error */
 		if (unlikely(cifs_sb->mnt_cifs_flags & CIFS_MOUNT_SERVER_INUM &&
 		    CIFS_I(*inode)->uniqueid != fattr.cf_uniqueid)) {
+			CIFS_I(*inode)->time = 0; /* force reval */
 			rc = -ESTALE;
 			goto cgii_exit;
 		}
@@ -1679,6 +1680,10 @@ cifs_do_rename(const unsigned int xid, struct dentry *from_dentry,
 	 * rename by filehandle to various Windows servers.
 	 */
 	if (rc == 0 || rc != -EBUSY)
+		goto do_rename_exit;
+
+	/* Don't fall back to using SMB on SMB 2+ mount */
+	if (server->vals->protocol_id != 0)
 		goto do_rename_exit;
 
 	/* open-file renames don't work across directories */

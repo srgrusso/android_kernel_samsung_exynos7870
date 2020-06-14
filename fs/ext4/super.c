@@ -360,8 +360,6 @@ static void ext4_journal_commit_callback(journal_t *journal, transaction_t *txn)
 
 	BUG_ON(txn->t_state == T_FINISHED);
 
-	ext4_process_freed_data(sb, txn->t_tid);
-
 	spin_lock(&sbi->s_md_lock);
 	while (!list_empty(&txn->t_private_list)) {
 		jce = list_entry(txn->t_private_list.next,
@@ -843,6 +841,8 @@ static void ext4_put_super(struct super_block *sb)
 {
 	struct ext4_sb_info *sbi = EXT4_SB(sb);
 	struct ext4_super_block *es = sbi->s_es;
+	struct buffer_head **group_desc;
+	struct flex_groups **flex_groups;
 	int i, err;
 
 	ext4_unregister_li_request(sb);
@@ -876,16 +876,20 @@ static void ext4_put_super(struct super_block *sb)
 		remove_proc_entry("options", sbi->s_proc);
 		remove_proc_entry(sb->s_id, ext4_proc_root);
 	}
-
-	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC)
-		sysfs_delete_link(&ext4_kset->kobj, &sbi->s_kobj, "userdata");
-
 	kobject_del(&sbi->s_kobj);
 
+	rcu_read_lock();
+	group_desc = rcu_dereference(sbi->s_group_desc);
 	for (i = 0; i < sbi->s_gdb_count; i++)
-		brelse(sbi->s_group_desc[i]);
-	ext4_kvfree(sbi->s_group_desc);
-	ext4_kvfree(sbi->s_flex_groups);
+		brelse(group_desc[i]);
+	kvfree(group_desc);
+	flex_groups = rcu_dereference(sbi->s_flex_groups);
+	if (flex_groups) {
+		for (i = 0; i < sbi->s_flex_groups_allocated; i++)
+			kvfree(flex_groups[i]);
+		kvfree(flex_groups);
+	}
+	rcu_read_unlock();
 	percpu_counter_destroy(&sbi->s_freeclusters_counter);
 	percpu_counter_destroy(&sbi->s_freeinodes_counter);
 	percpu_counter_destroy(&sbi->s_dirs_counter);
@@ -2013,8 +2017,8 @@ done:
 int ext4_alloc_flex_bg_array(struct super_block *sb, ext4_group_t ngroup)
 {
 	struct ext4_sb_info *sbi = EXT4_SB(sb);
-	struct flex_groups *new_groups;
-	int size;
+	struct flex_groups **old_groups, **new_groups;
+	int size, i, j;
 
 	if (!sbi->s_log_groups_per_flex)
 		return 0;
@@ -2023,22 +2027,38 @@ int ext4_alloc_flex_bg_array(struct super_block *sb, ext4_group_t ngroup)
 	if (size <= sbi->s_flex_groups_allocated)
 		return 0;
 
-	size = roundup_pow_of_two(size * sizeof(struct flex_groups));
-	new_groups = ext4_kvzalloc(size, GFP_KERNEL);
+	new_groups = ext4_kvzalloc(roundup_pow_of_two(size *
+				   sizeof(*sbi->s_flex_groups)), GFP_KERNEL);
 	if (!new_groups) {
-		ext4_msg(sb, KERN_ERR, "not enough memory for %d flex groups",
-			 size / (int) sizeof(struct flex_groups));
+		ext4_msg(sb, KERN_ERR,
+			 "not enough memory for %d flex group pointers", size);
 		return -ENOMEM;
 	}
 
-	if (sbi->s_flex_groups) {
-		memcpy(new_groups, sbi->s_flex_groups,
-		       (sbi->s_flex_groups_allocated *
-			sizeof(struct flex_groups)));
-		ext4_kvfree(sbi->s_flex_groups);
+	for (i = sbi->s_flex_groups_allocated; i < size; i++) {
+		new_groups[i] = ext4_kvzalloc(roundup_pow_of_two(
+					      sizeof(struct flex_groups)),
+					      GFP_KERNEL);
+		if (!new_groups[i]) {
+			for (j = sbi->s_flex_groups_allocated; j < i; j++)
+				kvfree(new_groups[j]);
+			kvfree(new_groups);
+			ext4_msg(sb, KERN_ERR,
+				 "not enough memory for %d flex groups", size);
+			return -ENOMEM;
+		}
 	}
-	sbi->s_flex_groups = new_groups;
-	sbi->s_flex_groups_allocated = size / sizeof(struct flex_groups);
+	rcu_read_lock();
+	old_groups = rcu_dereference(sbi->s_flex_groups);
+	if (old_groups)
+		memcpy(new_groups, old_groups,
+		       (sbi->s_flex_groups_allocated *
+			sizeof(struct flex_groups *)));
+	rcu_read_unlock();
+	rcu_assign_pointer(sbi->s_flex_groups, new_groups);
+	sbi->s_flex_groups_allocated = size;
+	if (old_groups)
+		ext4_kvfree_array_rcu(old_groups);
 	return 0;
 }
 
@@ -2046,6 +2066,7 @@ static int ext4_fill_flex_info(struct super_block *sb)
 {
 	struct ext4_sb_info *sbi = EXT4_SB(sb);
 	struct ext4_group_desc *gdp = NULL;
+	struct flex_groups *fg;
 	ext4_group_t flex_group;
 	int i, err;
 
@@ -2063,12 +2084,11 @@ static int ext4_fill_flex_info(struct super_block *sb)
 		gdp = ext4_get_group_desc(sb, i, NULL);
 
 		flex_group = ext4_flex_group(sbi, i);
-		atomic_add(ext4_free_inodes_count(sb, gdp),
-			   &sbi->s_flex_groups[flex_group].free_inodes);
+		fg = sbi_array_rcu_deref(sbi, s_flex_groups, flex_group);
+		atomic_add(ext4_free_inodes_count(sb, gdp), &fg->free_inodes);
 		atomic64_add(ext4_free_group_clusters(sb, gdp),
-			     &sbi->s_flex_groups[flex_group].free_clusters);
-		atomic_add(ext4_used_dirs_count(sb, gdp),
-			   &sbi->s_flex_groups[flex_group].used_dirs);
+			     &fg->free_clusters);
+		atomic_add(ext4_used_dirs_count(sb, gdp), &fg->used_dirs);
 	}
 
 	return 1;
@@ -2079,22 +2099,24 @@ failed:
 static __le16 ext4_group_desc_csum(struct ext4_sb_info *sbi, __u32 block_group,
 				   struct ext4_group_desc *gdp)
 {
-	int offset;
+	int offset = offsetof(struct ext4_group_desc, bg_checksum);
 	__u16 crc = 0;
 	__le32 le_group = cpu_to_le32(block_group);
 
 	if (ext4_has_metadata_csum(sbi->s_sb)) {
 		/* Use new metadata_csum algorithm */
-		__le16 save_csum;
 		__u32 csum32;
+		__u16 dummy_csum = 0;
 
-		save_csum = gdp->bg_checksum;
-		gdp->bg_checksum = 0;
 		csum32 = ext4_chksum(sbi, sbi->s_csum_seed, (__u8 *)&le_group,
 				     sizeof(le_group));
-		csum32 = ext4_chksum(sbi, csum32, (__u8 *)gdp,
-				     sbi->s_desc_size);
-		gdp->bg_checksum = save_csum;
+		csum32 = ext4_chksum(sbi, csum32, (__u8 *)gdp, offset);
+		csum32 = ext4_chksum(sbi, csum32, (__u8 *)&dummy_csum,
+				     sizeof(dummy_csum));
+		offset += sizeof(dummy_csum);
+		if (offset < sbi->s_desc_size)
+			csum32 = ext4_chksum(sbi, csum32, (__u8 *)gdp + offset,
+					     sbi->s_desc_size - offset);
 
 		crc = csum32 & 0xFFFF;
 		goto out;
@@ -2104,8 +2126,6 @@ static __le16 ext4_group_desc_csum(struct ext4_sb_info *sbi, __u32 block_group,
 	if (!(sbi->s_es->s_feature_ro_compat &
 	      cpu_to_le32(EXT4_FEATURE_RO_COMPAT_GDT_CSUM)))
 		return 0;
-
-	offset = offsetof(struct ext4_group_desc, bg_checksum);
 
 	crc = crc16(~0, sbi->s_es->s_uuid, sizeof(sbi->s_es->s_uuid));
 	crc = crc16(crc, (__u8 *)&le_group, sizeof(le_group));
@@ -2600,32 +2620,6 @@ static int parse_strtoull(const char *buf,
 	return ret;
 }
 
-static ssize_t sec_fs_stat_show(struct ext4_attr *a,
-				struct ext4_sb_info *sbi, char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "\"%s\":\"%llu\",\"%s\":\"%llu\",\"%s\":\"%u\",\"%s\":\"%llu\",\"%s\":\"%u\"\n",
-		"F_BLOCKS",
-		(unsigned long long)ext4_blocks_count(sbi->s_es),
-		"F_BFREE",
-		(unsigned long long)percpu_counter_sum_positive(
-						&sbi->s_freeclusters_counter) -
-		(unsigned long long)percpu_counter_sum_positive(
-						&sbi->s_dirtyclusters_counter),
-		"F_FILES",
-		(unsigned int)le32_to_cpu(sbi->s_es->s_inodes_count),
-		"F_FFREE",
-		(unsigned long long)percpu_counter_sum_positive(
-						&sbi->s_freeinodes_counter),
-		"FS_ERROR",
-		(unsigned int)le32_to_cpu(sbi->s_es->s_error_count));
-}
-
-static ssize_t sec_fs_freefrag_show(struct ext4_attr *a,
-				struct ext4_sb_info *sbi, char *buf)
-{
-	return ext4_mb_freefrag_show(sbi, buf);
-}
-
 static ssize_t delayed_allocation_blocks_show(struct ext4_attr *a,
 					      struct ext4_sb_info *sbi,
 					      char *buf)
@@ -2658,27 +2652,6 @@ static ssize_t lifetime_write_kbytes_show(struct ext4_attr *a,
 			(unsigned long long)(sbi->s_kbytes_written +
 			((part_stat_read(sb->s_bdev->bd_part, sectors[1]) -
 			  EXT4_SB(sb)->s_sectors_written_start) >> 1)));
-}
-
-static ssize_t r_blocks_count_show(struct ext4_attr *a,
-		struct ext4_sb_info *sbi, char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%llu\n",
-			(unsigned long long) atomic64_read(&sbi->s_r_blocks_count));
-}
-
-static ssize_t r_blocks_count_store(struct ext4_attr *a,
-		struct ext4_sb_info *sbi, const char *buf, size_t count)
-{
-	unsigned long long val;
-
-	if (parse_strtoull(buf, -1ULL, &val) || ext4_r_blocks_count(sbi->s_es))
-		return -EINVAL;
-	atomic64_set(&sbi->s_r_blocks_count, val);
-	ext4_msg(sbi->s_sb, KERN_INFO, "Root reserved blocks %ld",
-			atomic64_read(&sbi->s_r_blocks_count));
-
-	return count;
 }
 
 static ssize_t inode_readahead_blks_store(struct ext4_attr *a,
@@ -2818,12 +2791,9 @@ static struct ext4_attr ext4_attr_##_name = {			\
 	},							\
 }
 
-EXT4_RO_ATTR(sec_fs_stat);
-EXT4_RO_ATTR(sec_fs_freefrag);
 EXT4_RO_ATTR(delayed_allocation_blocks);
 EXT4_RO_ATTR(session_write_kbytes);
 EXT4_RO_ATTR(lifetime_write_kbytes);
-EXT4_RW_ATTR(r_blocks_count);
 EXT4_RW_ATTR(reserved_clusters);
 EXT4_ATTR_OFFSET(inode_readahead_blks, 0644, sbi_ui_show,
 		 inode_readahead_blks_store, s_inode_readahead_blks);
@@ -2848,12 +2818,9 @@ EXT4_RO_ATTR_ES_UI(first_error_time, s_first_error_time);
 EXT4_RO_ATTR_ES_UI(last_error_time, s_last_error_time);
 
 static struct attribute *ext4_attrs[] = {
-	ATTR_LIST(sec_fs_stat),
-	ATTR_LIST(sec_fs_freefrag),
 	ATTR_LIST(delayed_allocation_blocks),
 	ATTR_LIST(session_write_kbytes),
 	ATTR_LIST(lifetime_write_kbytes),
-	ATTR_LIST(r_blocks_count),
 	ATTR_LIST(reserved_clusters),
 	ATTR_LIST(inode_readahead_blks),
 	ATTR_LIST(inode_goal),
@@ -3645,9 +3612,10 @@ static int ext4_reserve_clusters(struct ext4_sb_info *sbi, ext4_fsblk_t count)
 static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 {
 	char *orig_data = kstrdup(data, GFP_KERNEL);
-	struct buffer_head *bh;
+	struct buffer_head *bh, **group_desc;
 	struct ext4_super_block *es = NULL;
 	struct ext4_sb_info *sbi;
+	struct flex_groups **flex_groups;
 	ext4_fsblk_t block;
 	ext4_fsblk_t sb_block = get_sb_block(&data);
 	ext4_fsblk_t logical_sb_block;
@@ -4183,9 +4151,10 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 			goto failed_mount;
 		}
 	}
-	sbi->s_group_desc = ext4_kvmalloc(db_count *
+	rcu_assign_pointer(sbi->s_group_desc,
+			   ext4_kvmalloc(db_count *
 					  sizeof(struct buffer_head *),
-					  GFP_KERNEL);
+					  GFP_KERNEL));
 	if (sbi->s_group_desc == NULL) {
 		ext4_msg(sb, KERN_ERR, "not enough memory");
 		ret = -ENOMEM;
@@ -4202,14 +4171,19 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	bgl_lock_init(sbi->s_blockgroup_lock);
 
 	for (i = 0; i < db_count; i++) {
+		struct buffer_head *bh;
+
 		block = descriptor_loc(sb, logical_sb_block, i);
-		sbi->s_group_desc[i] = sb_bread_unmovable(sb, block);
-		if (!sbi->s_group_desc[i]) {
+		bh = sb_bread_unmovable(sb, block);
+		if (!bh) {
 			ext4_msg(sb, KERN_ERR,
 			       "can't read group descriptor %d", i);
 			db_count = i;
 			goto failed_mount2;
 		}
+		rcu_read_lock();
+		rcu_dereference(sbi->s_group_desc)[i] = bh;
+		rcu_read_unlock();
 	}
 	sbi->s_gdb_count = db_count;
 	if (!ext4_check_descriptors(sb, logical_sb_block, &first_not_zeroed)) {
@@ -4360,14 +4334,6 @@ no_journal:
 			goto failed_mount_wq;
 	}
 
-	if (le32_to_cpu(es->s_sec_magic) == EXT4_SEC_DATA_MAGIC ||
-			strncmp(es->s_volume_name, "data", 4) == 0) {
-		sbi->s_r_inodes_count = EXT4_DEF_RESERVE_INODE;
-		ext4_msg(sb, KERN_INFO, "Reserve inodes (%d/%u)",
-			EXT4_DEF_RESERVE_INODE * 2,
-			le32_to_cpu(es->s_inodes_count));
-	}
-
 	/*
 	 * The maximum number of concurrent works can be high and
 	 * concurrency isn't really necessary.  Limit it to 1.
@@ -4408,21 +4374,6 @@ no_journal:
 		sb->s_flags |= MS_RDONLY;
 
 	ext4_clamp_want_extra_isize(sb);
-
-#define ANDROID_M_R_BLOCKS_COUNT	(1280)
-	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC ||
-			strncmp(es->s_volume_name, "data", 4) == 0)
-		atomic64_set(&sbi->s_r_blocks_count, ext4_r_blocks_count(es) ? :
-				ANDROID_M_R_BLOCKS_COUNT);
-
-	if (atomic64_read(&sbi->s_r_blocks_count))
-		ext4_msg(sb, KERN_INFO, "Root reserved blocks %ld",
-				atomic64_read(&sbi->s_r_blocks_count));
-
-	if (ext4_sec_r_blocks_count(es))
-		ext4_msg(sb, KERN_INFO, "SEC reserved blocks %llu",
-				ext4_sec_r_blocks_count(es) >>
-				sbi->s_cluster_bits);
 
 	err = ext4_reserve_clusters(sbi, ext4_calculate_resv_clusters(sb));
 	if (err) {
@@ -4499,14 +4450,6 @@ no_journal:
 	}
 #endif  /* CONFIG_QUOTA */
 
-	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC) {
-		err = sysfs_create_link(&ext4_kset->kobj, &sbi->s_kobj,
-			      "userdata");
-		if (err)
-			printk(KERN_ERR "Can not create sysfs link"
-					"for userdata(%d)", err);
-	}
-
 	EXT4_SB(sb)->s_mount_state |= EXT4_ORPHAN_FS;
 	ext4_orphan_cleanup(sb, es);
 	EXT4_SB(sb)->s_mount_state &= ~EXT4_ORPHAN_FS;
@@ -4560,8 +4503,14 @@ failed_mount7:
 	ext4_unregister_li_request(sb);
 failed_mount6:
 	ext4_mb_release(sb);
-	if (sbi->s_flex_groups)
-		ext4_kvfree(sbi->s_flex_groups);
+	rcu_read_lock();
+	flex_groups = rcu_dereference(sbi->s_flex_groups);
+	if (flex_groups) {
+		for (i = 0; i < sbi->s_flex_groups_allocated; i++)
+			kvfree(flex_groups[i]);
+		kvfree(flex_groups);
+	}
+	rcu_read_unlock();
 	percpu_counter_destroy(&sbi->s_freeclusters_counter);
 	percpu_counter_destroy(&sbi->s_freeinodes_counter);
 	percpu_counter_destroy(&sbi->s_dirs_counter);
@@ -4588,9 +4537,12 @@ failed_mount3:
 	if (sbi->s_mmp_tsk)
 		kthread_stop(sbi->s_mmp_tsk);
 failed_mount2:
+	rcu_read_lock();
+	group_desc = rcu_dereference(sbi->s_group_desc);
 	for (i = 0; i < db_count; i++)
-		brelse(sbi->s_group_desc[i]);
-	ext4_kvfree(sbi->s_group_desc);
+		brelse(group_desc[i]);
+	kvfree(group_desc);
+	rcu_read_unlock();
 failed_mount:
 	if (sbi->s_chksum_driver)
 		crypto_free_shash(sbi->s_chksum_driver);
@@ -5394,10 +5346,8 @@ static int ext4_statfs(struct dentry *dentry, struct kstatfs *buf)
 	/* prevent underflow in case that few free space is available */
 	buf->f_bfree = EXT4_C2B(sbi, max_t(s64, bfree, 0));
 	buf->f_bavail = buf->f_bfree -
-			(atomic64_read(&sbi->s_r_blocks_count) + resv_blocks +
-			 ext4_sec_r_blocks_count(es));
-	if (buf->f_bfree < (atomic64_read(&sbi->s_r_blocks_count) +
-				resv_blocks + ext4_sec_r_blocks_count(es)))
+			(ext4_r_blocks_count(es) + resv_blocks);
+	if (buf->f_bfree < (ext4_r_blocks_count(es) + resv_blocks))
 		buf->f_bavail = 0;
 	buf->f_files = le32_to_cpu(es->s_inodes_count);
 	buf->f_ffree = percpu_counter_sum_positive(&sbi->s_freeinodes_counter);

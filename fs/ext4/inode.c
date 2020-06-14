@@ -54,25 +54,31 @@ static __u32 ext4_inode_csum(struct inode *inode, struct ext4_inode *raw,
 			      struct ext4_inode_info *ei)
 {
 	struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);
-	__u16 csum_lo;
-	__u16 csum_hi = 0;
 	__u32 csum;
+	__u16 dummy_csum = 0;
+	int offset = offsetof(struct ext4_inode, i_checksum_lo);
+	unsigned int csum_size = sizeof(dummy_csum);
 
-	csum_lo = le16_to_cpu(raw->i_checksum_lo);
-	raw->i_checksum_lo = 0;
-	if (EXT4_INODE_SIZE(inode->i_sb) > EXT4_GOOD_OLD_INODE_SIZE &&
-	    EXT4_FITS_IN_INODE(raw, ei, i_checksum_hi)) {
-		csum_hi = le16_to_cpu(raw->i_checksum_hi);
-		raw->i_checksum_hi = 0;
+	csum = ext4_chksum(sbi, ei->i_csum_seed, (__u8 *)raw, offset);
+	csum = ext4_chksum(sbi, csum, (__u8 *)&dummy_csum, csum_size);
+	offset += csum_size;
+	csum = ext4_chksum(sbi, csum, (__u8 *)raw + offset,
+			   EXT4_GOOD_OLD_INODE_SIZE - offset);
+
+	if (EXT4_INODE_SIZE(inode->i_sb) > EXT4_GOOD_OLD_INODE_SIZE) {
+		offset = offsetof(struct ext4_inode, i_checksum_hi);
+		csum = ext4_chksum(sbi, csum, (__u8 *)raw +
+				   EXT4_GOOD_OLD_INODE_SIZE,
+				   offset - EXT4_GOOD_OLD_INODE_SIZE);
+		if (EXT4_FITS_IN_INODE(raw, ei, i_checksum_hi)) {
+			csum = ext4_chksum(sbi, csum, (__u8 *)&dummy_csum,
+					   csum_size);
+			offset += csum_size;
+			csum = ext4_chksum(sbi, csum, (__u8 *)raw + offset,
+					   EXT4_INODE_SIZE(inode->i_sb) -
+					   offset);
+		}
 	}
-
-	csum = ext4_chksum(sbi, ei->i_csum_seed, (__u8 *)raw,
-			   EXT4_INODE_SIZE(inode->i_sb));
-
-	raw->i_checksum_lo = cpu_to_le16(csum_lo);
-	if (EXT4_INODE_SIZE(inode->i_sb) > EXT4_GOOD_OLD_INODE_SIZE &&
-	    EXT4_FITS_IN_INODE(raw, ei, i_checksum_hi))
-		raw->i_checksum_hi = cpu_to_le16(csum_hi);
 
 	return csum;
 }
@@ -208,9 +214,9 @@ void ext4_evict_inode(struct inode *inode)
 		 * Note that directories do not have this problem because they
 		 * don't use page cache.
 		 */
-		if (ext4_should_journal_data(inode) &&
+		if (inode->i_ino != EXT4_JOURNAL_INO &&
+		    ext4_should_journal_data(inode) &&
 		    (S_ISLNK(inode->i_mode) || S_ISREG(inode->i_mode)) &&
-		    inode->i_ino != EXT4_JOURNAL_INO &&
 		    inode->i_data.nrpages) {
 			journal_t *journal = EXT4_SB(inode->i_sb)->s_journal;
 			tid_t commit_tid = EXT4_I(inode)->i_datasync_tid;
@@ -685,6 +691,34 @@ has_zeroout:
 	return retval;
 }
 
+/*
+ * Update EXT4_MAP_FLAGS in bh->b_state. For buffer heads attached to pages
+ * we have to be careful as someone else may be manipulating b_state as well.
+ */
+static void ext4_update_bh_state(struct buffer_head *bh, unsigned long flags)
+{
+	unsigned long old_state;
+	unsigned long new_state;
+
+	flags &= EXT4_MAP_FLAGS;
+
+	/* Dummy buffer_head? Set non-atomically. */
+	if (!bh->b_page) {
+		bh->b_state = (bh->b_state & ~EXT4_MAP_FLAGS) | flags;
+		return;
+	}
+	/*
+	 * Someone else may be modifying b_state. Be careful! This is ugly but
+	 * once we get rid of using bh as a container for mapping information
+	 * to pass to / from get_block functions, this can go away.
+	 */
+	do {
+		old_state = READ_ONCE(bh->b_state);
+		new_state = (old_state & ~EXT4_MAP_FLAGS) | flags;
+	} while (unlikely(
+		 cmpxchg(&bh->b_state, old_state, new_state) != old_state));
+}
+
 /* Maximum number of blocks we map for direct IO at once. */
 #define DIO_MAX_BLOCKS 4096
 
@@ -721,7 +755,7 @@ static int _ext4_get_block(struct inode *inode, sector_t iblock,
 		ext4_io_end_t *io_end = ext4_inode_aio(inode);
 
 		map_bh(bh, inode->i_sb, map.m_pblk);
-		bh->b_state = (bh->b_state & ~EXT4_MAP_FLAGS) | map.m_flags;
+		ext4_update_bh_state(bh, map.m_flags);
 		if (io_end && io_end->flag & EXT4_IO_END_UNWRITTEN)
 			set_buffer_defer_completion(bh);
 		bh->b_size = inode->i_sb->s_blocksize * map.m_len;
@@ -1684,7 +1718,7 @@ int ext4_da_get_block_prep(struct inode *inode, sector_t iblock,
 		return ret;
 
 	map_bh(bh, inode->i_sb, map.m_pblk);
-	bh->b_state = (bh->b_state & ~EXT4_MAP_FLAGS) | map.m_flags;
+	ext4_update_bh_state(bh, map.m_flags);
 
 	if (buffer_unwritten(bh)) {
 		/* A delayed write to unwritten bh should be marked
@@ -3676,6 +3710,15 @@ int ext4_punch_hole(struct inode *inode, loff_t offset, loff_t length)
 
 	trace_ext4_punch_hole(inode, offset, length, 0);
 
+	ext4_clear_inode_state(inode, EXT4_STATE_MAY_INLINE_DATA);
+	if (ext4_has_inline_data(inode)) {
+		down_write(&EXT4_I(inode)->i_mmap_sem);
+		ret = ext4_convert_inline_data(inode);
+		up_write(&EXT4_I(inode)->i_mmap_sem);
+		if (ret)
+			return ret;
+	}
+
 	/*
 	 * Write out all dirty pages to avoid race conditions
 	 * Then release them.
@@ -4419,6 +4462,7 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 			inode->i_op = &ext4_symlink_inode_operations;
 			ext4_set_aops(inode);
 		}
+		inode_nohighmem(inode);
 	} else if (S_ISCHR(inode->i_mode) || S_ISBLK(inode->i_mode) ||
 	      S_ISFIFO(inode->i_mode) || S_ISSOCK(inode->i_mode)) {
 		inode->i_op = &ext4_special_inode_operations;
