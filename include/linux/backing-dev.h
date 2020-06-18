@@ -25,13 +25,13 @@ struct device;
 struct dentry;
 
 /*
- * Bits in backing_dev_info.state
+ * Bits in bdi_writeback.state
  */
-enum bdi_state {
-	BDI_async_congested,	/* The async (write) queue is getting full */
-	BDI_sync_congested,	/* The sync queue is getting full */
-	BDI_registered,		/* bdi_register() was done */
-	BDI_writeback_running,	/* Writeback is in progress */
+enum wb_state {
+	WB_async_congested,	/* The async (write) queue is getting full */
+	WB_sync_congested,	/* The sync queue is getting full */
+	WB_registered,		/* bdi_register() was done */
+	WB_writeback_running,	/* Writeback is in progress */
 };
 
 typedef int (congested_fn)(void *, int);
@@ -49,6 +49,7 @@ enum bdi_stat_item {
 struct bdi_writeback {
 	struct backing_dev_info *bdi;	/* our parent bdi */
 
+	unsigned long state;		/* Always use atomic bitops on this */
 	unsigned long last_old_flush;	/* last old data flush */
 
 	struct delayed_work dwork;	/* work item used for writeback */
@@ -62,7 +63,6 @@ struct bdi_writeback {
 struct backing_dev_info {
 	struct list_head bdi_list;
 	unsigned long ra_pages;	/* max readahead in PAGE_CACHE_SIZE units */
-	unsigned long state;	/* Always use atomic bitops on this */
 	unsigned int capabilities; /* Device capabilities */
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;	/* Pointer to aux data for congested func */
@@ -119,7 +119,7 @@ int bdi_register(struct backing_dev_info *bdi, struct device *parent,
 		const char *fmt, ...);
 int bdi_register_dev(struct backing_dev_info *bdi, dev_t dev);
 void bdi_unregister(struct backing_dev_info *bdi);
-int __must_check bdi_setup_and_register(struct backing_dev_info *, char *, unsigned int);
+int __must_check bdi_setup_and_register(struct backing_dev_info *, char *);
 void bdi_start_writeback(struct backing_dev_info *bdi, long nr_pages,
 			enum wb_reason reason);
 void bdi_start_background_writeback(struct backing_dev_info *bdi);
@@ -233,44 +233,16 @@ int bdi_set_max_ratio(struct backing_dev_info *bdi, unsigned int max_ratio);
  * BDI_CAP_NO_ACCT_DIRTY:  Dirty pages shouldn't contribute to accounting
  * BDI_CAP_NO_WRITEBACK:   Don't write pages back
  * BDI_CAP_NO_ACCT_WB:     Don't automatically account writeback pages
- *
- * These flags let !MMU mmap() govern direct device mapping vs immediate
- * copying more easily for MAP_PRIVATE, especially for ROM filesystems.
- *
- * BDI_CAP_MAP_COPY:       Copy can be mapped (MAP_PRIVATE)
- * BDI_CAP_MAP_DIRECT:     Can be mapped directly (MAP_SHARED)
- * BDI_CAP_READ_MAP:       Can be mapped for reading
- * BDI_CAP_WRITE_MAP:      Can be mapped for writing
- * BDI_CAP_EXEC_MAP:       Can be mapped for execution
- *
- * BDI_CAP_SWAP_BACKED:    Count shmem/tmpfs objects as swap-backed.
- *
  * BDI_CAP_STRICTLIMIT:    Keep number of dirty pages below bdi threshold.
  */
 #define BDI_CAP_NO_ACCT_DIRTY	0x00000001
 #define BDI_CAP_NO_WRITEBACK	0x00000002
-#define BDI_CAP_MAP_COPY	0x00000004
-#define BDI_CAP_MAP_DIRECT	0x00000008
-#define BDI_CAP_READ_MAP	0x00000010
-#define BDI_CAP_WRITE_MAP	0x00000020
-#define BDI_CAP_EXEC_MAP	0x00000040
-#define BDI_CAP_NO_ACCT_WB	0x00000080
-#define BDI_CAP_SWAP_BACKED	0x00000100
-#define BDI_CAP_STABLE_WRITES	0x00000200
-#define BDI_CAP_STRICTLIMIT	0x00000400
-
-#define BDI_CAP_VMFLAGS \
-	(BDI_CAP_READ_MAP | BDI_CAP_WRITE_MAP | BDI_CAP_EXEC_MAP)
+#define BDI_CAP_NO_ACCT_WB	0x00000004
+#define BDI_CAP_STABLE_WRITES	0x00000008
+#define BDI_CAP_STRICTLIMIT	0x00000010
 
 #define BDI_CAP_NO_ACCT_AND_WRITEBACK \
 	(BDI_CAP_NO_WRITEBACK | BDI_CAP_NO_ACCT_DIRTY | BDI_CAP_NO_ACCT_WB)
-
-#if defined(VM_MAYREAD) && \
-	(BDI_CAP_READ_MAP != VM_MAYREAD || \
-	 BDI_CAP_WRITE_MAP != VM_MAYWRITE || \
-	 BDI_CAP_EXEC_MAP != VM_MAYEXEC)
-#error please change backing_dev_info::capabilities flags
-#endif
 
 extern struct backing_dev_info default_backing_dev_info;
 extern struct backing_dev_info noop_backing_dev_info;
@@ -281,23 +253,23 @@ static inline int bdi_congested(struct backing_dev_info *bdi, int bdi_bits)
 {
 	if (bdi->congested_fn)
 		return bdi->congested_fn(bdi->congested_data, bdi_bits);
-	return (bdi->state & bdi_bits);
+	return (bdi->wb.state & bdi_bits);
 }
 
 static inline int bdi_read_congested(struct backing_dev_info *bdi)
 {
-	return bdi_congested(bdi, 1 << BDI_sync_congested);
+	return bdi_congested(bdi, 1 << WB_sync_congested);
 }
 
 static inline int bdi_write_congested(struct backing_dev_info *bdi)
 {
-	return bdi_congested(bdi, 1 << BDI_async_congested);
+	return bdi_congested(bdi, 1 << WB_async_congested);
 }
 
 static inline int bdi_rw_congested(struct backing_dev_info *bdi)
 {
-	return bdi_congested(bdi, (1 << BDI_sync_congested) |
-				  (1 << BDI_async_congested));
+	return bdi_congested(bdi, (1 << WB_sync_congested) |
+				  (1 << WB_async_congested));
 }
 
 enum {
@@ -334,11 +306,6 @@ static inline bool bdi_cap_account_writeback(struct backing_dev_info *bdi)
 				      BDI_CAP_NO_WRITEBACK));
 }
 
-static inline bool bdi_cap_swap_backed(struct backing_dev_info *bdi)
-{
-	return bdi->capabilities & BDI_CAP_SWAP_BACKED;
-}
-
 static inline bool mapping_cap_writeback_dirty(struct address_space *mapping)
 {
 	return bdi_cap_writeback_dirty(mapping->backing_dev_info);
@@ -347,11 +314,6 @@ static inline bool mapping_cap_writeback_dirty(struct address_space *mapping)
 static inline bool mapping_cap_account_dirty(struct address_space *mapping)
 {
 	return bdi_cap_account_dirty(mapping->backing_dev_info);
-}
-
-static inline bool mapping_cap_swap_backed(struct address_space *mapping)
-{
-	return bdi_cap_swap_backed(mapping->backing_dev_info);
 }
 
 static inline int bdi_sched_wait(void *word)
