@@ -125,7 +125,7 @@ static gpu_attribute gpu_config_attributes[] = {
 	{GPU_TEMP_THROTTLING2, 845},
 	{GPU_TEMP_THROTTLING3, 728},
 	{GPU_TEMP_THROTTLING4, 545},
-	{GPU_TEMP_THROTTLING5, 450},
+	{GPU_TEMP_THROTTLING5, 343},
 	{GPU_TEMP_TRIPPING, 343},
 	{GPU_POWER_COEFF, 625}, /* all core on param */
 	{GPU_DVFS_TIME_INTERVAL, 5},
@@ -486,10 +486,15 @@ int gpu_enable_dvs(struct exynos_context *platform)
 	}
 
 #ifdef CONFIG_EXYNOS_CL_DVFS_G3D
-	if (!platform->dvs_is_enabled)
-	{
- 		level = gpu_dvfs_get_level(gpu_get_cur_clock(platform));
- 		exynos_cl_dvfs_stop(ID_G3D, level);
+	if (!platform->dvs_is_enabled) {
+		if (platform->exynos_pm_domain) {
+			mutex_lock(&platform->exynos_pm_domain->access_lock);
+			if (!platform->dvs_is_enabled && gpu_is_power_on()) {
+				level = gpu_dvfs_get_level(gpu_get_cur_clock(platform));
+				exynos_cl_dvfs_stop(ID_G3D, level);
+			}
+			mutex_unlock(&platform->exynos_pm_domain->access_lock);
+		}
 	}
 #endif /* CONFIG_EXYNOS_CL_DVFS_G3D */
 
