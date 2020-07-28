@@ -1346,6 +1346,7 @@ struct super_block {
 };
 
 extern struct timespec current_fs_time(struct super_block *sb);
+extern struct timespec current_time(struct inode *inode);
 
 /*
  * Snapshotting support.
@@ -1991,6 +1992,16 @@ extern int generic_update_time(struct inode *, struct timespec *, int);
 static inline struct inode *file_inode(const struct file *f)
 {
 	return f->f_inode;
+}
+
+static inline struct dentry *file_dentry(const struct file *file)
+{
+	struct dentry *dentry = file->f_path.dentry;
+
+	if (unlikely(dentry->d_flags & DCACHE_OP_REAL))
+		return dentry->d_op->d_real(dentry, file_inode(file));
+	else
+		return dentry;
 }
 
 /* /sys/fs */

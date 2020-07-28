@@ -29,10 +29,9 @@
 #include <linux/sched.h>
 #include <linux/highmem.h>
 #include <linux/perf_event.h>
-#ifdef CONFIG_EXYNOS_SNAPSHOT
-#include <linux/exynos-ss.h>
-#endif
+#include <linux/preempt.h>
 
+#include <asm/bug.h>
 #include <asm/cpufeature.h>
 #include <asm/exception.h>
 #include <asm/debug-monitors.h>
@@ -41,11 +40,7 @@
 #include <asm/system_misc.h>
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
-#ifdef CONFIG_SEC_DEBUG
-#include <linux/sec_debug.h>
-#endif
 
-static int safe_fault_in_progress = 0;
 static const char *fault_name(unsigned int esr);
 
 /*
@@ -88,20 +83,6 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 	printk("\n");
 }
 
-static int __do_kernel_fault_safe(struct mm_struct *mm, unsigned long addr,
-		unsigned int esr, struct pt_regs *regs)
-{
-	safe_fault_in_progress = 0xFAFADEAD;
-
-#ifdef CONFIG_EXYNOS_SNAPSHOT_MINIMIZED_MODE
-	exynos_ss_printkl(safe_fault_in_progress,safe_fault_in_progress);
-#endif
-	while(1)
-		wfi();
-
-	return 0;
-}
-
 static bool is_el1_instruction_abort(unsigned int esr)
 {
 	return ESR_ELx_EC(esr) == ESR_ELx_EC_IABT_CUR;
@@ -119,23 +100,12 @@ static void __do_kernel_fault(struct mm_struct *mm, unsigned long addr,
 	 */
 	if (!is_el1_instruction_abort(esr) && fixup_exception(regs))
 		return;
-	if (safe_fault_in_progress) {
-#ifdef CONFIG_EXYNOS_SNAPSHOT_MINIMIZED_MODE
-		exynos_ss_printkl(safe_fault_in_progress, safe_fault_in_progress);
-#endif
-		return;
-	}
 
 	/*
 	 * No handler, we'll have to terminate things with extreme prejudice.
 	 */
 	bust_spinlocks(1);
-
-#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
-	sec_debug_set_extra_info_fault(addr, regs);
-#endif
-
-	pr_auto(ASL1, "Unable to handle kernel %s at virtual address %08lx\n",
+	pr_alert("Unable to handle kernel %s at virtual address %08lx\n",
 		 (addr < PAGE_SIZE) ? "NULL pointer dereference" :
 		 "paging request", addr);
 
@@ -155,8 +125,7 @@ static void __do_user_fault(struct task_struct *tsk, unsigned long addr,
 {
 	struct siginfo si;
 
-	if (show_unhandled_signals && unhandled_signal(tsk, sig) &&
-	    printk_ratelimit()) {
+	if (unhandled_signal(tsk, sig) && show_unhandled_signals_ratelimited()) {
 		pr_info("%s[%d]: unhandled %s (%d) at 0x%08lx, esr 0x%03x\n",
 			tsk->comm, task_pid_nr(tsk), fault_name(esr), sig,
 			addr, esr);
@@ -429,10 +398,6 @@ static int __kprobes do_translation_fault(unsigned long addr,
 					  unsigned int esr,
 					  struct pt_regs *regs)
 {
-	/* We may have invalid '*current' due to a stack overflow. */
-	if (!virt_addr_valid(current_thread_info()) || !virt_addr_valid(current))
-		__do_kernel_fault_safe(NULL, addr, esr, regs);
-
 	if (addr < TASK_SIZE)
 		return do_page_fault(addr, esr, regs);
 
@@ -538,22 +503,14 @@ asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,
 	if (!inf->fn(addr, esr, regs))
 		return;
 
-	if (show_unhandled_signals && unhandled_signal(current, inf->sig) &&
-	    printk_ratelimit()) {
-		pr_auto(ASL1, "Unhandled fault: %s (0x%08x) at 0x%016lx -- %s\n",
-			inf->name, esr, addr, esr_get_class_string(esr));
-	}
-
-#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
-	if (!user_mode(regs))
-		sec_debug_set_extra_info_fault(addr, regs);
-#endif
+	pr_alert("Unhandled fault: %s (0x%08x) at 0x%016lx\n",
+		 inf->name, esr, addr);
 
 	info.si_signo = inf->sig;
 	info.si_errno = 0;
 	info.si_code  = inf->code;
 	info.si_addr  = (void __user *)addr;
-	arm64_notify_die("Oops - Data abort", regs, &info, esr);
+	arm64_notify_die("", regs, &info, esr);
 }
 
 /*
@@ -564,13 +521,6 @@ asmlinkage void __exception do_sp_pc_abort(unsigned long addr,
 					   struct pt_regs *regs)
 {
 	struct siginfo info;
-
-#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
-	if (!user_mode(regs)) {
-		sec_debug_set_extra_info_fault(addr, regs);
-		sec_debug_set_extra_info_esr(esr);
-	}
-#endif
 
 	info.si_signo = SIGBUS;
 	info.si_errno = 0;
@@ -627,9 +577,17 @@ asmlinkage int __exception do_debug_exception(unsigned long addr,
 }
 
 #ifdef CONFIG_ARM64_PAN
-void cpu_enable_pan(void *__unused)
+int cpu_enable_pan(void *__unused)
 {
+	/*
+	 * We modify PSTATE. This won't work from irq context as the PSTATE
+	 * is discarded once we return from the exception.
+	 */
+	WARN_ON_ONCE(in_interrupt());
+
 	config_sctlr_el1(SCTLR_EL1_SPAN, 0);
+	asm(SET_PSTATE_PAN(1));
+	return 0;
 }
 #endif /* CONFIG_ARM64_PAN */
 
@@ -640,8 +598,9 @@ void cpu_enable_pan(void *__unused)
  * We need to enable the feature at runtime (instead of adding it to
  * PSR_MODE_EL1h) as the feature may not be implemented by the cpu.
  */
-void cpu_enable_uao(void *__unused)
+int cpu_enable_uao(void *__unused)
 {
 	asm(SET_PSTATE_UAO(1));
+	return 0;
 }
 #endif /* CONFIG_ARM64_UAO */
