@@ -503,11 +503,8 @@ struct ieee80211_bss_conf {
  * @IEEE80211_TX_CTL_DONTFRAG: Don't fragment this packet even if it
  *	would be fragmented by size (this is optional, only used for
  *	monitor injection).
- * @IEEE80211_TX_STAT_NOACK_TRANSMITTED: A frame that was marked with
- *	IEEE80211_TX_CTL_NO_ACK has been successfully transmitted without
- *	any errors (like issues specific to the driver/HW).
- *	This flag must not be set for frames that don't request no-ack
- *	behaviour with IEEE80211_TX_CTL_NO_ACK.
+ * @IEEE80211_TX_CTL_PS_RESPONSE: This frame is a response to a poll
+ *	frame (PS-Poll or uAPSD).
  *
  * Note: If you have to add new flags to the enumeration, then don't
  *	 forget to update %IEEE80211_TX_TEMPORARY_FLAGS when necessary.
@@ -543,7 +540,7 @@ enum mac80211_tx_info_flags {
 	IEEE80211_TX_STATUS_EOSP		= BIT(28),
 	IEEE80211_TX_CTL_USE_MINRATE		= BIT(29),
 	IEEE80211_TX_CTL_DONTFRAG		= BIT(30),
-	IEEE80211_TX_STAT_NOACK_TRANSMITTED	= BIT(31),
+	IEEE80211_TX_CTL_PS_RESPONSE		= BIT(31),
 };
 
 #define IEEE80211_TX_CTL_STBC_SHIFT		23
@@ -553,14 +550,11 @@ enum mac80211_tx_info_flags {
  *
  * @IEEE80211_TX_CTRL_PORT_CTRL_PROTO: this frame is a port control
  *	protocol frame (e.g. EAP)
- * @IEEE80211_TX_CTRL_PS_RESPONSE: This frame is a response to a poll
- *	frame (PS-Poll or uAPSD).
  *
  * These flags are used in tx_info->control.flags.
  */
 enum mac80211_tx_control_flags {
 	IEEE80211_TX_CTRL_PORT_CTRL_PROTO	= BIT(0),
-	IEEE80211_TX_CTRL_PS_RESPONSE		= BIT(1),
 };
 
 /*
@@ -3446,26 +3440,6 @@ void ieee80211_tx_status(struct ieee80211_hw *hw,
 			 struct sk_buff *skb);
 
 /**
- * ieee80211_tx_status_noskb - transmit status callback without skb
- *
- * This function can be used as a replacement for ieee80211_tx_status
- * in drivers that cannot reliably map tx status information back to
- * specific skbs.
- *
- * Calls to this function for a single hardware must be synchronized
- * against each other. Calls to this function, ieee80211_tx_status_ni()
- * and ieee80211_tx_status_irqsafe() may not be mixed for a single hardware.
- *
- * @hw: the hardware the frame was transmitted by
- * @sta: the receiver station to which this packet is sent
- *	(NULL for multicast packets)
- * @info: tx status information
- */
-void ieee80211_tx_status_noskb(struct ieee80211_hw *hw,
-			       struct ieee80211_sta *sta,
-			       struct ieee80211_tx_info *info);
-
-/**
  * ieee80211_tx_status_ni - transmit status callback (in process context)
  *
  * Like ieee80211_tx_status() but can be called in process context.
@@ -4911,42 +4885,4 @@ void ieee80211_update_p2p_noa(struct ieee80211_noa_data *data, u32 tsf);
 void ieee80211_tdls_oper_request(struct ieee80211_vif *vif, const u8 *peer,
 				 enum nl80211_tdls_operation oper,
 				 u16 reason_code, gfp_t gfp);
-
-/**
- * ieee80211_reserve_tid - request to reserve a specific TID
- *
- * There is sometimes a need (such as in TDLS) for blocking the driver from
- * using a specific TID so that the FW can use it for certain operations such
- * as sending PTI requests. To make sure that the driver doesn't use that TID,
- * this function must be called as it flushes out packets on this TID and marks
- * it as blocked, so that any transmit for the station on this TID will be
- * redirected to the alternative TID in the same AC.
- *
- * Note that this function blocks and may call back into the driver, so it
- * should be called without driver locks held. Also note this function should
- * only be called from the driver's @sta_state callback.
- *
- * @sta: the station to reserve the TID for
- * @tid: the TID to reserve
- *
- * Returns: 0 on success, else on failure
- */
-int ieee80211_reserve_tid(struct ieee80211_sta *sta, u8 tid);
-
-/**
- * ieee80211_unreserve_tid - request to unreserve a specific TID
- *
- * Once there is no longer any need for reserving a certain TID, this function
- * should be called, and no longer will packets have their TID modified for
- * preventing use of this TID in the driver.
- *
- * Note that this function blocks and acquires a lock, so it should be called
- * without driver locks held. Also note this function should only be called
- * from the driver's @sta_state callback.
- *
- * @sta: the station
- * @tid: the TID to unreserve
- */
-void ieee80211_unreserve_tid(struct ieee80211_sta *sta, u8 tid);
-
 #endif /* MAC80211_H */
