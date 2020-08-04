@@ -607,62 +607,6 @@ static int ieee80211_tx_get_rates(struct ieee80211_hw *hw,
 	return rates_idx;
 }
 
-void ieee80211_tx_status_noskb(struct ieee80211_hw *hw,
-			       struct ieee80211_sta *pubsta,
-			       struct ieee80211_tx_info *info)
-{
-	struct ieee80211_local *local = hw_to_local(hw);
-	struct ieee80211_supported_band *sband;
-	int retry_count;
-	int rates_idx;
-	bool acked, noack_success;
-
-	rates_idx = ieee80211_tx_get_rates(hw, info, &retry_count);
-
-	sband = hw->wiphy->bands[info->band];
-
-	acked = !!(info->flags & IEEE80211_TX_STAT_ACK);
-	noack_success = !!(info->flags & IEEE80211_TX_STAT_NOACK_TRANSMITTED);
-
-	if (pubsta) {
-		struct sta_info *sta;
-
-		sta = container_of(pubsta, struct sta_info, sta);
-
-		if (!acked)
-			sta->tx_retry_failed++;
-		sta->tx_retry_count += retry_count;
-
-		if (acked) {
-			sta->last_rx = jiffies;
-
-			if (sta->lost_packets)
-				sta->lost_packets = 0;
-
-			/* Track when last TDLS packet was ACKed */
-			if (test_sta_flag(sta, WLAN_STA_TDLS_PEER_AUTH))
-				sta->last_tdls_pkt_time = jiffies;
-		} else {
-			ieee80211_lost_packet(sta, info);
-		}
-
-		rate_control_tx_status_noskb(local, sband, sta, info);
-	}
-
-	if (acked || noack_success) {
-		    local->dot11TransmittedFrameCount++;
-		    if (!pubsta)
-			    local->dot11MulticastTransmittedFrameCount++;
-		    if (retry_count > 0)
-			    local->dot11RetryCount++;
-		    if (retry_count > 1)
-			    local->dot11MultipleRetryCount++;
-	} else {
-		local->dot11FailedCount++;
-	}
-}
-EXPORT_SYMBOL(ieee80211_tx_status_noskb);
-
 void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 {
 	struct sk_buff *skb2;
@@ -681,7 +625,6 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 	struct ieee80211_bar *bar;
 	int rtap_len;
 	int shift = 0;
-	int tid = IEEE80211_NUM_TIDS;;
 
 	rates_idx = ieee80211_tx_get_rates(hw, info, &retry_count);
 
@@ -725,7 +668,7 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 
 		if ((info->flags & IEEE80211_TX_STAT_AMPDU_NO_BACK) &&
 		    (ieee80211_is_data_qos(fc))) {
-			u16 ssn;
+			u16 tid, ssn;
 			u8 *qc;
 
 			qc = ieee80211_get_qos_ctl(hdr);
@@ -734,14 +677,10 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 						& IEEE80211_SCTL_SEQ);
 			ieee80211_send_bar(&sta->sdata->vif, hdr->addr1,
 					   tid, ssn);
-		} else if (ieee80211_is_data_qos(fc)) {
-			u8 *qc = ieee80211_get_qos_ctl(hdr);
-
-			tid = qc[0] & 0xf;
 		}
 
 		if (!acked && ieee80211_is_back_req(fc)) {
-			u16 control;
+			u16 tid, control;
 
 			/*
 			 * BAR failed, store the last SSN and retry sending
@@ -769,12 +708,6 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 			if (!acked)
 				sta->tx_retry_failed++;
 			sta->tx_retry_count += retry_count;
-
-			if (ieee80211_is_data_present(fc)) {
-				if (!acked)
-					sta->tx_msdu_failed[tid]++;
-				sta->tx_msdu_retries[tid] += retry_count;
-			}
 		}
 
 		rate_control_tx_status(local, sband, sta, skb);
@@ -819,8 +752,7 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 	 * Fragments are passed to low-level drivers as separate skbs, so these
 	 * are actually fragments, not frames. Update frame counters only for
 	 * the first fragment of the frame. */
-	if ((info->flags & IEEE80211_TX_STAT_ACK) ||
-	    (info->flags & IEEE80211_TX_STAT_NOACK_TRANSMITTED)) {
+	if (info->flags & IEEE80211_TX_STAT_ACK) {
 		if (ieee80211_is_first_frag(hdr->seq_ctrl)) {
 			local->dot11TransmittedFrameCount++;
 			if (is_multicast_ether_addr(hdr->addr1))
