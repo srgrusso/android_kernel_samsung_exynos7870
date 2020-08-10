@@ -168,10 +168,8 @@ DECLARE_EVENT_CLASS(writeback_work_class,
 		__field(int, reason)
 	),
 	TP_fast_assign(
-		struct device *dev = bdi->dev;
-		if (!dev)
-			dev = default_backing_dev_info.dev;
-		strncpy(__entry->name, dev_name(dev), 32);
+		strncpy(__entry->name,
+			bdi->dev ? dev_name(bdi->dev) : "(unknown)", 32);
 		__entry->nr_pages = work->nr_pages;
 		__entry->sb_dev = work->sb ? work->sb->s_dev : 0;
 		__entry->sync_mode = work->sync_mode;
@@ -235,7 +233,6 @@ DEFINE_EVENT(writeback_class, name, \
 DEFINE_WRITEBACK_EVENT(writeback_nowork);
 DEFINE_WRITEBACK_EVENT(writeback_wake_background);
 DEFINE_WRITEBACK_EVENT(writeback_bdi_register);
-DEFINE_WRITEBACK_EVENT(writeback_bdi_unregister);
 
 DECLARE_EVENT_CLASS(wbc_class,
 	TP_PROTO(struct writeback_control *wbc, struct backing_dev_info *bdi),

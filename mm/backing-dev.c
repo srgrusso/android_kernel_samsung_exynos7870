@@ -14,12 +14,6 @@
 
 static atomic_long_t bdi_seq = ATOMIC_LONG_INIT(0);
 
-struct backing_dev_info default_backing_dev_info = {
-	.name		= "default",
-	.ra_pages	= VM_MAX_READAHEAD * 1024 / PAGE_CACHE_SIZE,
-};
-EXPORT_SYMBOL_GPL(default_backing_dev_info);
-
 struct backing_dev_info noop_backing_dev_info = {
 	.name		= "noop",
 	.capabilities	= BDI_CAP_NO_ACCT_AND_WRITEBACK,
@@ -256,9 +250,6 @@ static int __init default_bdi_init(void)
 	if (!bdi_wq)
 		return -ENOMEM;
 
-	err = bdi_init(&default_backing_dev_info);
-	if (!err)
-		bdi_register(&default_backing_dev_info, NULL, "default");
 	err = bdi_init(&noop_backing_dev_info);
 
 	return err;
@@ -369,23 +360,6 @@ static void bdi_wb_shutdown(struct backing_dev_info *bdi)
 	flush_delayed_work(&bdi->wb.dwork);
 }
 
-/*
- * Called when the device behind @bdi has been removed or ejected.
- *
- * We can't really do much here except for reducing the dirty ratio at
- * the moment.  In the future we should be able to set a flag so that
- * the filesystem can handle errors at mark_inode_dirty time instead
- * of only at writeback time.
- */
-void bdi_unregister(struct backing_dev_info *bdi)
-{
-	if (WARN_ON_ONCE(!bdi->dev))
-		return;
-
-	bdi_set_min_ratio(bdi, 0);
-}
-EXPORT_SYMBOL(bdi_unregister);
-
 static void bdi_wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi)
 {
 	memset(wb, 0, sizeof(*wb));
@@ -436,10 +410,6 @@ int bdi_init(struct backing_dev_info *bdi)
 	bdi->write_bandwidth = INIT_BW;
 	bdi->avg_write_bandwidth = INIT_BW;
 
-	bdi->last_thresh = 0;
-	bdi->last_nr_dirty = 0;
-	bdi->paused_total = 0;
-
 	err = fprop_local_init_percpu(&bdi->completions, GFP_KERNEL);
 
 	if (err) {
@@ -457,6 +427,7 @@ void bdi_destroy(struct backing_dev_info *bdi)
 	int i;
 
 	bdi_wb_shutdown(bdi);
+	bdi_set_min_ratio(bdi, 0);
 
 	WARN_ON(!list_empty(&bdi->work_list));
 	WARN_ON(delayed_work_pending(&bdi->wb.dwork));
