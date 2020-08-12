@@ -1719,9 +1719,6 @@ out:
 	return err;
 }
 
-/* FIXME: will be removed, debugging code for P160223-00802 */
-extern void *memchr_inv(const void *start, int c, size_t bytes);
-
 static int netlink_recvmsg(struct kiocb *kiocb, struct socket *sock,
 			   struct msghdr *msg, size_t len,
 			   int flags)
@@ -1748,16 +1745,6 @@ static int netlink_recvmsg(struct kiocb *kiocb, struct socket *sock,
 
 #ifdef CONFIG_COMPAT_NETLINK_MESSAGES
 	if (unlikely(skb_shinfo(skb)->frag_list)) {
-		/* FIXME: will be removed, debugging code for P160223-00802 */
-		{
-			char *tmp = (char *)skb_shinfo(skb);
-			if (memchr_inv(tmp, 0x6b, 8) == NULL) {
-				pr_err("POISON_FREE: data_skb:0x%p, data_skb->head:0x%p\n",
-					data_skb, data_skb->head);
-				BUG();
-			}
-		}
-
 		/*
 		 * If this skb has a frag_list, then here that means that we
 		 * will have to use the frag_list skb's data for compat tasks
@@ -1853,16 +1840,11 @@ __netlink_kernel_create(struct net *net, int unit, struct module *module,
 
 	if (sock_create_lite(PF_NETLINK, SOCK_DGRAM, unit, &sock))
 		return NULL;
-	/*
-	 * We have to just have a reference on the net from sk, but don't
-	 * get_net it. Besides, we cannot get and then put the net here.
-	 * So we create one inside init_net and the move it to net.
-	 */
-	if (__netlink_create(&init_net, sock, cb_mutex, unit, 0) < 0)
+
+	if (__netlink_create(net, sock, cb_mutex, unit, 1) < 0)
 		goto out_sock_release_nosk;
 
 	sk = sock->sk;
-	sk_change_net(sk, net);
 
 	if (!cfg || cfg->groups < 32)
 		groups = 32;
@@ -1918,7 +1900,10 @@ EXPORT_SYMBOL(__netlink_kernel_create);
 void
 netlink_kernel_release(struct sock *sk)
 {
-	sk_release_kernel(sk);
+	if (sk == NULL || sk->sk_socket == NULL)
+		return;
+
+	sock_release(sk->sk_socket);
 }
 EXPORT_SYMBOL(netlink_kernel_release);
 
