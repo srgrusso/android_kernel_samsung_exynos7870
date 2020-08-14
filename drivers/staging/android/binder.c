@@ -266,7 +266,6 @@ struct binder_context {
 
 	kuid_t binder_context_mgr_uid;
 	const char *name;
- 	bool inherit_fifo_prio; 
 };
 
 struct binder_device {
@@ -1246,7 +1245,6 @@ static void binder_transaction_priority(struct task_struct *task,
 					struct binder_priority node_prio,
 					bool inherit_rt)
 {
-  	bool inherit_fifo = t->buffer->target_node->proc->context->inherit_fifo_prio;
 	struct binder_priority desired_prio = t->priority;
 
 	if (t->set_priority_called)
@@ -1256,7 +1254,7 @@ static void binder_transaction_priority(struct task_struct *task,
 	t->saved_priority.sched_policy = task->policy;
 	t->saved_priority.prio = task->normal_prio;
 
- 	if (!inherit_rt && is_rt_policy(desired_prio.sched_policy) && !inherit_fifo) {
+	if (!inherit_rt && is_rt_policy(desired_prio.sched_policy)) {
 		desired_prio.prio = NICE_TO_PRIO(0);
 		desired_prio.sched_policy = SCHED_NORMAL;
 	}
@@ -1639,42 +1637,6 @@ static struct binder_ref *binder_get_ref_olocked(struct binder_proc *proc,
 	return NULL;
 }
 
-static void dump_ref_desc_tree(struct binder_ref *new_ref)
-{
-	struct binder_proc *proc = new_ref->proc;
-	uint32_t desc = new_ref->data.desc;
-	struct rb_node *n, *p;
-	int i = 0;
-
-	pr_info("BUG.%d:%d: dump of refs_by_desc rb tree, new desc=%u\n",
-			proc->pid, current->pid, desc);
-	for (n = rb_first(&proc->refs_by_desc); n != NULL; n = rb_next(n)) {
-		struct binder_ref *left=NULL, *right=NULL, *parent=NULL;
-		struct binder_ref *ref;
-
-		ref = rb_entry(n, struct binder_ref, rb_node_desc);
-		if (n->rb_left)
-			left = rb_entry(n->rb_left, struct binder_ref,
-					rb_node_desc);
-		if (n->rb_right)
-			right = rb_entry(n->rb_right, struct binder_ref,
-					 rb_node_desc);
-		p = rb_parent(n);
-		if (p)
-			parent = rb_entry(p, struct binder_ref, rb_node_desc);
-
-		pr_info("%d: id %d desc %u%s%s n %d s %d w %d l %d r %d p %d\n",
-			i++, ref->data.debug_id, ref->data.desc,
-			(n == proc->refs_by_desc.rb_node) ? " (ROOT)" : "",
-			(ref->data.desc == desc) ? " (MATCH)" : "",
-			ref->node->debug_id,
-			ref->data.strong, ref->data.weak,
-			left ? left->data.debug_id : -1,
-			right ? right->data.debug_id : -1,
-			parent ? parent->data.debug_id : -1);
-	}
-}
-
 /**
  * binder_get_ref_for_node_olocked() - get the ref associated with given node
  * @proc:	binder_proc that owns the ref
@@ -1742,10 +1704,8 @@ static struct binder_ref *binder_get_ref_for_node_olocked(
 			p = &(*p)->rb_left;
 		else if (new_ref->data.desc > ref->data.desc)
 			p = &(*p)->rb_right;
-		else {
-			dump_ref_desc_tree(new_ref);
+		else
 			BUG();
-		}
 	}
 	rb_link_node(&new_ref->rb_node_desc, parent, p);
 	rb_insert_color(&new_ref->rb_node_desc, &proc->refs_by_desc);
@@ -2882,6 +2842,48 @@ static bool binder_proc_transaction(struct binder_transaction *t,
 	return true;
 }
 
+/**
+ * binder_get_node_refs_for_txn() - Get required refs on node for txn
+ * @node:         struct binder_node for which to get refs
+ * @proc:         returns @node->proc if valid
+ * @error:        if no @proc then returns BR_DEAD_REPLY
+ *
+ * User-space normally keeps the node alive when creating a transaction
+ * since it has a reference to the target. The local strong ref keeps it
+ * alive if the sending process dies before the target process processes
+ * the transaction. If the source process is malicious or has a reference
+ * counting bug, relying on the local strong ref can fail.
+ *
+ * Since user-space can cause the local strong ref to go away, we also take
+ * a tmpref on the node to ensure it survives while we are constructing
+ * the transaction. We also need a tmpref on the proc while we are
+ * constructing the transaction, so we take that here as well.
+ *
+ * Return: The target_node with refs taken or NULL if no @node->proc is NULL.
+ * Also sets @proc if valid. If the @node->proc is NULL indicating that the
+ * target proc has died, @error is set to BR_DEAD_REPLY
+ */
+static struct binder_node *binder_get_node_refs_for_txn(
+		struct binder_node *node,
+		struct binder_proc **procp,
+		uint32_t *error)
+{
+	struct binder_node *target_node = NULL;
+
+	binder_node_inner_lock(node);
+	if (node->proc) {
+		target_node = node;
+		binder_inc_node_nilocked(node, 1, 0, NULL);
+		binder_inc_node_tmpref_ilocked(node);
+		node->proc->tmp_ref++;
+		*procp = node->proc;
+	} else
+		*error = BR_DEAD_REPLY;
+	binder_node_inner_unlock(node);
+
+	return target_node;
+}
+
 static void binder_transaction(struct binder_proc *proc,
 			       struct binder_thread *thread,
 			       struct binder_transaction_data *tr, int reply,
@@ -2986,28 +2988,24 @@ static void binder_transaction(struct binder_proc *proc,
 			ref = binder_get_ref_olocked(proc, tr->target.handle,
 						     true);
 			if (ref) {
-				binder_inc_node(ref->node, 1, 0, NULL);
-				target_node = ref->node;
+				target_node = binder_get_node_refs_for_txn(
+						ref->node, &target_proc,
+						&return_error);
+			} else {
+				binder_user_error("%d:%d got transaction to invalid handle\n",
+						  proc->pid, thread->pid);
+				return_error = BR_FAILED_REPLY;
 			}
 			binder_proc_unlock(proc);
-			if (target_node == NULL) {
-				binder_user_error("%d:%d got transaction to invalid handle\n",
-					proc->pid, thread->pid);
-				return_error = BR_FAILED_REPLY;
-				return_error_param = -EINVAL;
-				return_error_line = __LINE__;
-				goto err_invalid_target_handle;
-			}
 		} else {
 			mutex_lock(&context->context_mgr_node_lock);
 			target_node = context->binder_context_mgr_node;
-			if (target_node == NULL) {
+			if (target_node)
+				target_node = binder_get_node_refs_for_txn(
+						target_node, &target_proc,
+						&return_error);
+			else
 				return_error = BR_DEAD_REPLY;
-				mutex_unlock(&context->context_mgr_node_lock);
-				return_error_line = __LINE__;
-				goto err_no_context_mgr_node;
-			}
-			binder_inc_node(target_node, 1, 0, NULL);
 			mutex_unlock(&context->context_mgr_node_lock);
 			if (target_node && target_proc == proc) {
 				binder_user_error("%d:%d got transaction to context manager from process owning it\n",
@@ -3018,19 +3016,15 @@ static void binder_transaction(struct binder_proc *proc,
 				goto err_invalid_target_handle;
 			}
 		}
-		e->to_node = target_node->debug_id;
-		binder_node_lock(target_node);
-		target_proc = target_node->proc;
-		if (target_proc == NULL) {
-			binder_node_unlock(target_node);
-			return_error = BR_DEAD_REPLY;
+		if (!target_node) {
+			/*
+			 * return_error is set above
+			 */
+			return_error_param = -EINVAL;
 			return_error_line = __LINE__;
 			goto err_dead_binder;
 		}
-		binder_inner_proc_lock(target_proc);
-		target_proc->tmp_ref++;
-		binder_inner_proc_unlock(target_proc);
-		binder_node_unlock(target_node);
+		e->to_node = target_node->debug_id;
 		if (security_binder_transaction(proc->tsk,
 						target_proc->tsk) < 0) {
 			return_error = BR_FAILED_REPLY;
@@ -3434,6 +3428,8 @@ static void binder_transaction(struct binder_proc *proc,
 	if (target_thread)
 		binder_thread_dec_tmpref(target_thread);
 	binder_proc_dec_tmpref(target_proc);
+	if (target_node)
+		binder_dec_node_tmpref(target_node);
 	/*
 	 * write barrier to synchronize with initialization
 	 * of log entry
@@ -3453,6 +3449,8 @@ err_bad_parent:
 err_copy_data_failed:
 	trace_binder_transaction_failed_buffer_release(t->buffer);
 	binder_transaction_buffer_release(target_proc, t->buffer, offp);
+	if (target_node)
+		binder_dec_node_tmpref(target_node);
 	target_node = NULL;
 	t->buffer->transaction = NULL;
 	binder_alloc_free_buf(&target_proc->alloc, t->buffer);
@@ -3471,13 +3469,14 @@ err_bad_call_stack:
 err_empty_call_stack:
 err_dead_binder:
 err_invalid_target_handle:
-err_no_context_mgr_node:
 	if (target_thread)
 		binder_thread_dec_tmpref(target_thread);
 	if (target_proc)
 		binder_proc_dec_tmpref(target_proc);
-	if (target_node)
+	if (target_node) {
 		binder_dec_node(target_node, 1, 0);
+		binder_dec_node_tmpref(target_node);
+	}
 
 	binder_debug(BINDER_DEBUG_FAILED_TRANSACTION,
 		     "%d:%d transaction failed %d/%d, size %lld-%lld line %d\n",
@@ -4731,29 +4730,6 @@ out:
 	return ret;
 }
 
-static int binder_ioctl_set_inherit_fifo_prio(struct file *filp)
-{
-	int ret = 0;
-	struct binder_proc *proc = filp->private_data;
-	struct binder_context *context = proc->context;
-	kuid_t curr_euid = current_euid();
-	mutex_lock(&context->context_mgr_node_lock);
-	if (uid_valid(context->binder_context_mgr_uid)) {
-		if (!uid_eq(context->binder_context_mgr_uid, curr_euid)) {
-			pr_err("BINDER_SET_INHERIT_FIFO_PRIO bad uid %d != %d\n",
-			       from_kuid(&init_user_ns, curr_euid),
-			       from_kuid(&init_user_ns,
-					 context->binder_context_mgr_uid));
-			ret = -EPERM;
-			goto out;
-		}
-	}
-	context->inherit_fifo_prio = true;
- out:
-	mutex_unlock(&context->context_mgr_node_lock);
-	return ret;
-}
-
 static int binder_ioctl_set_ctx_mgr(struct file *filp,
 				    struct flat_binder_object *fbo)
 {
@@ -4924,12 +4900,6 @@ static long binder_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (ret)
 			goto err;
 		break;
-	case BINDER_SET_INHERIT_FIFO_PRIO:
-		ret = binder_ioctl_set_inherit_fifo_prio(filp);
-		if (ret)
-			goto err;
-		break;
-
 	case BINDER_THREAD_EXIT:
 		binder_debug(BINDER_DEBUG_THREADS, "%d:%d exit\n",
 			     proc->pid, thread->pid);
@@ -5725,7 +5695,6 @@ static void print_binder_proc_stats(struct seq_file *m,
 
 	seq_printf(m, "proc %d\n", proc->pid);
 	seq_printf(m, "context %s\n", proc->context->name);
- 	seq_printf(m, "context FIFO: %d\n", proc->context->inherit_fifo_prio);
 	count = 0;
 	ready_threads = 0;
 	binder_inner_proc_lock(proc);
