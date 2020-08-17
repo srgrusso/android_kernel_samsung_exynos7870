@@ -149,10 +149,6 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		if (tsk->flags & PF_KTHREAD)
 			continue;
 
-#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
-		if (test_task_flag(tsk, TIF_MEMALLOC))
-			continue;
-#endif
 		p = find_lock_task_mm(tsk);
 		if (!p)
 			continue;
