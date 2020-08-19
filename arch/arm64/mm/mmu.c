@@ -44,7 +44,7 @@
 #include <linux/vmalloc.h>
 
 u64 idmap_t0sz = TCR_T0SZ(VA_BITS);
-static int iotable_on;
+
 /*
  * Empty_zero_page is a special page that is used for zero-initialized data
  * and COW.
@@ -65,8 +65,12 @@ EXPORT_SYMBOL(phys_mem_access_prot);
 
 static void __init *early_alloc(unsigned long sz)
 {
-	void *ptr = __va(memblock_alloc(sz, sz));
-	BUG_ON(!ptr);
+	phys_addr_t phys;
+	void *ptr;
+
+	phys = memblock_alloc(sz, sz);
+	BUG_ON(!phys);
+	ptr = __va(phys);
 	memset(ptr, 0, sz);
 	return ptr;
 }
@@ -109,10 +113,7 @@ static void alloc_init_pte(pmd_t *pmd, unsigned long addr,
 
 	pte = pte_offset_kernel(pmd, addr);
 	do {
-		if (iotable_on == 1)
-			set_pte(pte, pfn_pte(pfn, pgprot_iotable_init(PAGE_KERNEL_EXEC)));
-		else
-			set_pte(pte, pfn_pte(pfn, prot));
+		set_pte(pte, pfn_pte(pfn, prot));
 		pfn++;
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 }
@@ -252,6 +253,14 @@ static void  __create_mapping(struct mm_struct *mm, pgd_t *pgd,
 {
 	unsigned long addr, length, end, next;
 
+	/*
+	 * If the virtual and physical address don't have the same offset
+	 * within a page, we cannot map the region as the caller expects.
+	 */
+	if (WARN_ON((phys ^ virt) & ~PAGE_MASK))
+		return;
+
+	phys &= PAGE_MASK;
 	addr = virt & PAGE_MASK;
 	length = PAGE_ALIGN(size + (virt & ~PAGE_MASK));
 
@@ -427,7 +436,7 @@ void mark_rodata_ro(void)
 {
 	create_mapping_late(__pa(_stext), (unsigned long)_stext,
 				(unsigned long)__init_begin - (unsigned long)_stext,
-				PAGE_KERNEL_EXEC | PTE_RDONLY);
+				PAGE_KERNEL_ROX);
 }
 #endif
 
