@@ -291,21 +291,7 @@ static inline unsigned bio_segments(struct bio *bio)
  * returns. and then bio would be freed memory when if (bio->bi_flags ...)
  * runs
  */
-static inline void bio_get(struct bio *bio)
-{
-	bio->bi_flags |= (1 << BIO_REFFED);
-	smp_mb__before_atomic();
-	atomic_inc(&bio->__bi_cnt);
-}
-
-static inline void bio_cnt_set(struct bio *bio, unsigned int count)
-{
-	if (count != 1) {
-		bio->bi_flags |= (1 << BIO_REFFED);
-		smp_mb__before_atomic();
-	}
-	atomic_set(&bio->__bi_cnt, count);
-}
+#define bio_get(bio)	atomic_inc(&(bio)->bi_cnt)
 
 static inline void bio_get_first_bvec(struct bio *bio, struct bio_vec *bv)
 {

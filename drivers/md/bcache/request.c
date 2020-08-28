@@ -624,7 +624,7 @@ static void do_bio_hook(struct search *s, struct bio *orig_bio)
 	bio->bi_end_io		= request_endio;
 	bio->bi_private		= &s->cl;
 
-	bio_cnt_set(bio, 3);
+	atomic_set(&bio->bi_cnt, 3);
 }
 
 static void search_free(struct closure *cl)
