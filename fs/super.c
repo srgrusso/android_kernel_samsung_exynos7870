@@ -756,12 +756,7 @@ int do_remount_sb2(struct vfsmount *mnt, struct super_block *sb, int flags, void
 			     sb->s_type->name, retval);
 		}
 	}
-#ifdef CONFIG_FIVE
-	sb->s_flags = (sb->s_flags & ~MS_RMT_MASK) |
-				(flags & MS_RMT_MASK) | MS_I_VERSION;
-#else
 	sb->s_flags = (sb->s_flags & ~MS_RMT_MASK) | (flags & MS_RMT_MASK);
-#endif
 	/* Needs to be ordered wrt mnt_is_readonly() */
 	smp_wmb();
 	sb->s_readonly_remount = 0;
@@ -861,7 +856,7 @@ int get_anon_bdev(dev_t *p)
 	else if (error)
 		return -EAGAIN;
 
-	if (dev == (1 << MINORBITS)) {
+	if (dev >= (1 << MINORBITS)) {
 		spin_lock(&unnamed_dev_lock);
 		ida_remove(&unnamed_dev_ida, dev);
 		if (unnamed_dev_start > dev)

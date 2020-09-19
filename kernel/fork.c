@@ -83,7 +83,6 @@
 #include <asm/tlbflush.h>
 
 #include <trace/events/sched.h>
-#include <linux/task_integrity.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/task.h>
@@ -287,8 +286,8 @@ void __init fork_init(unsigned long mempages)
 
 	/*
 	 * The default maximum number of threads is set to a safe
-	 * value: the thread structures can take up at most half
-	 * of memory.
+	 * value: the thread structures can take up at most one
+	 * eighth of the memory.
 	 */
 	max_threads = mempages / (8 * THREAD_SIZE / PAGE_SIZE);
 
@@ -396,6 +395,9 @@ static int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 	 * Not linked in yet - no deadlock potential:
 	 */
 	down_write_nested(&mm->mmap_sem, SINGLE_DEPTH_NESTING);
+
+	/* No ordering required: file already has been exposed. */
+	RCU_INIT_POINTER(mm->exe_file, get_mm_exe_file(oldmm));
 
 	mm->total_vm = oldmm->total_vm;
 	mm->shared_vm = oldmm->shared_vm;
@@ -526,7 +528,13 @@ static inline void mm_free_pgd(struct mm_struct *mm)
 	pgd_free(mm, mm->pgd);
 }
 #else
-#define dup_mmap(mm, oldmm)	(0)
+static int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
+{
+	down_write(&oldmm->mmap_sem);
+	RCU_INIT_POINTER(mm->exe_file, get_mm_exe_file(oldmm));
+	up_write(&oldmm->mmap_sem);
+	return 0;
+}
 #define mm_alloc_pgd(mm)	(0)
 #define mm_free_pgd(mm)
 #endif /* CONFIG_MMU */
@@ -577,9 +585,7 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	INIT_LIST_HEAD(&mm->mmlist);
 	mm->core_state = NULL;
 	atomic_long_set(&mm->nr_ptes, 0);
-#ifndef __PAGETABLE_PMD_FOLDED
-	atomic_long_set(&mm->nr_pmds, 0);
-#endif
+	mm_nr_pmds_init(mm);
 	mm->map_count = 0;
 	mm->locked_vm = 0;
 	mm->pinned_vm = 0;
@@ -720,33 +726,51 @@ void mmput_async(struct mm_struct *mm)
 	}
 }
 
+/**
+ * set_mm_exe_file - change a reference to the mm's executable file
+ *
+ * This changes mm's executable file (shown as symlink /proc/[pid]/exe).
+ *
+ * Main users are mmput() and sys_execve(). Callers prevent concurrent
+ * invocations: in mmput() nobody alive left, in execve task is single
+ * threaded. sys_prctl(PR_SET_MM_MAP/EXE_FILE) also needs to set the
+ * mm->exe_file, but does so without using set_mm_exe_file() in order
+ * to do avoid the need for any locks.
+ */
 void set_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 {
+	struct file *old_exe_file;
+
+	/*
+	 * It is safe to dereference the exe_file without RCU as
+	 * this function is only called if nobody else can access
+	 * this mm -- see comment above for justification.
+	 */
+	old_exe_file = rcu_dereference_raw(mm->exe_file);
+
 	if (new_exe_file)
 		get_file(new_exe_file);
-	if (mm->exe_file)
-		fput(mm->exe_file);
-	mm->exe_file = new_exe_file;
+	rcu_assign_pointer(mm->exe_file, new_exe_file);
+	if (old_exe_file)
+		fput(old_exe_file);
 }
 
+/**
+ * get_mm_exe_file - acquire a reference to the mm's executable file
+ *
+ * Returns %NULL if mm has no associated executable file.
+ * User must release file via fput().
+ */
 struct file *get_mm_exe_file(struct mm_struct *mm)
 {
 	struct file *exe_file;
 
-	/* We need mmap_sem to protect against races with removal of exe_file */
-	down_read(&mm->mmap_sem);
-	exe_file = mm->exe_file;
-	if (exe_file)
-		get_file(exe_file);
-	up_read(&mm->mmap_sem);
+	rcu_read_lock();
+	exe_file = rcu_dereference(mm->exe_file);
+	if (exe_file && !get_file_rcu(exe_file))
+		exe_file = NULL;
+	rcu_read_unlock();
 	return exe_file;
-}
-
-static void dup_mm_exe_file(struct mm_struct *oldmm, struct mm_struct *newmm)
-{
-	/* It's safe to write the exe_file pointer without exe_file_lock because
-	 * this is called during fork when the task is not yet in /proc */
-	newmm->exe_file = get_mm_exe_file(oldmm);
 }
 
 /**
@@ -930,8 +954,6 @@ static struct mm_struct *dup_mm(struct task_struct *tsk)
 
 	if (!mm_init(mm, tsk, mm->user_ns))
 		goto fail_nomem;
-
-	dup_mm_exe_file(oldmm, mm);
 
 	err = dup_mmap(mm, oldmm);
 	if (err)
@@ -1245,59 +1267,6 @@ init_task_pid(struct task_struct *task, enum pid_type type, struct pid *pid)
 	 task->pids[type].pid = pid;
 }
 
-#ifdef CONFIG_FIVE
-static int dup_task_integrity(unsigned long clone_flags,
-					struct task_struct *tsk)
-{
-	int ret = 0;
-
-	if (clone_flags & CLONE_VM) {
-		task_integrity_get(current->integrity);
-		tsk->integrity = current->integrity;
-	} else {
-		tsk->integrity = task_integrity_alloc();
-
-		if (!tsk->integrity)
-			ret = -ENOMEM;
-	}
-
-	return ret;
-}
-
-static inline void task_integrity_cleanup(struct task_struct *tsk)
-{
-	task_integrity_put(tsk->integrity);
-}
-
-static inline int task_integrity_apply(unsigned long clone_flags,
-						struct task_struct *tsk)
-{
-	int ret = 0;
-
-	if (!(clone_flags & CLONE_VM))
-		ret = five_fork(current, tsk);
-
-	return ret;
-}
-#else
-static inline int dup_task_integrity(unsigned long clone_flags,
-						struct task_struct *tsk)
-{
-	return 0;
-}
-
-static inline void task_integrity_cleanup(struct task_struct *tsk)
-{
-}
-
-static inline int task_integrity_apply(unsigned long clone_flags,
-						struct task_struct *tsk)
-{
-	return 0;
-}
-
-#endif
-
 /*
  * This creates a new process as a copy of the old one,
  * but does not actually start it yet.
@@ -1532,15 +1501,13 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	retval = copy_thread(clone_flags, stack_start, stack_size, p);
 	if (retval)
 		goto bad_fork_cleanup_io;
-	retval = dup_task_integrity(clone_flags, p);
-	if (retval)
-		goto bad_fork_cleanup_io;
 
 	if (pid != &init_struct_pid) {
-		retval = -ENOMEM;
 		pid = alloc_pid(p->nsproxy->pid_ns_for_children);
-		if (!pid)
+		if (IS_ERR(pid)) {
+			retval = PTR_ERR(pid);
 			goto bad_fork_cleanup_io;
+		}
 	}
 
 #ifdef CONFIG_BLOCK
@@ -1646,10 +1613,6 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 		goto bad_fork_free_pid;
 	}
 
-	retval = task_integrity_apply(clone_flags, p);
-	if (retval)
-		goto bad_fork_free_pid;
-
 	if (likely(p->pid)) {
 		ptrace_init_task(p, (clone_flags & CLONE_PTRACE) || trace);
 
@@ -1704,7 +1667,6 @@ bad_fork_free_pid:
 		threadgroup_change_end(current);
 	if (pid != &init_struct_pid)
 		free_pid(pid);
-	task_integrity_cleanup(p);
 bad_fork_cleanup_io:
 	if (p->io_context)
 		exit_io_context(p);
